@@ -1,5 +1,13 @@
 <template>
-  <div class="game-container" @keydown="handleKeyDown" @keyup="handleKeyUp" tabindex="0" ref="gameRef">
+  <div 
+    class="game-container" 
+    @keydown="handleKeyDown" 
+    @keyup="handleKeyUp" 
+    @mousemove="handleMouseMove"
+    @mousedown="isMouseControlActive = true"
+    tabindex="0" 
+    ref="gameRef"
+  >
     <div 
       class="red-dot player" 
       :class="{ 'pulse-collect': isCollecting }"
@@ -52,6 +60,11 @@ const keys = ref({
   ArrowRight: false
 });
 
+// Mouse control variables
+const cursorPosition = ref({ x: 0, y: 0 });
+const isMouseControlActive = ref(false);
+const MOUSE_INFLUENCE = 0.03; // How strongly the cursor pulls the dot
+
 // Game variables
 const tailSegments = ref([]);
 const collectibleDots = ref([]);
@@ -62,7 +75,7 @@ const MAX_HISTORY = 300; // Store more positions than we need for smooth followi
 const ACCEL_RATE = 0.5;
 const DECEL_RATE = 0.85; // Higher value = slower deceleration
 const MAX_SPEED = 8;
-const DOT_SIZE = 20;
+const DOT_SIZE = 80;
 const SPAWN_INTERVAL = 2000; // New dot every 2 seconds
 const MAX_COLLECTIBLE_DOTS = 10; // Maximum dots on screen
 
@@ -152,12 +165,28 @@ const checkCollisions = () => {
     );
     
     if (collision) {
-      // Add to tail
+      // Find where the new segment should be positioned
+      const lastIndex = tailSegments.value.length - 1;
+      
+      let newX, newY;
+      
+      if (lastIndex >= 0) {
+        // Add behind the last segment
+        const lastSegment = tailSegments.value[lastIndex];
+        newX = lastSegment.x;
+        newY = lastSegment.y;
+      } else {
+        // First segment - add behind the player
+        newX = position.value.x;
+        newY = position.value.y;
+      }
+      
+      // Add the new segment
       tailSegments.value.push({
-        x: dot.x,
-        y: dot.y,
+        x: newX,
+        y: newY,
         color: dot.color,
-        followIndex: Math.max(20 * tailSegments.value.length, 3) // Spacing between segments
+        initialized: false // Will be properly positioned in next update
       });
       
       // Trigger the pulse effect!
@@ -179,15 +208,140 @@ const checkCollisions = () => {
 const updateTailSegments = () => {
   if (positionHistory.value.length === 0) return;
   
-  tailSegments.value.forEach((segment, index) => {
-    // Get the position from history based on the follow index
-    const historyIndex = Math.max(0, positionHistory.value.length - segment.followIndex);
-    if (historyIndex >= 0 && historyIndex < positionHistory.value.length) {
-      segment.x = positionHistory.value[historyIndex].x;
-      segment.y = positionHistory.value[historyIndex].y;
+  // Fixed spacing between segments in pixels
+  const SEGMENT_SPACING = DOT_SIZE * 1.2;
+  
+  // Calculate positions using a simpler follow method
+  let currentPathLength = 0;
+  let lastPos = { ...position.value };
+  
+  // First segment follows directly behind the player at a fixed distance
+  if (tailSegments.value.length > 0) {
+    const firstSegment = tailSegments.value[0];
+    
+    // Initialize the segments with a proper position if they're new
+    if (!firstSegment.initialized) {
+      firstSegment.x = position.value.x;
+      firstSegment.y = position.value.y;
+      firstSegment.initialized = true;
     }
-  });
+    
+    // Distance from head to first segment
+    const TARGET_DISTANCE = SEGMENT_SPACING;
+    
+    // Travel back through position history to find the right position
+    let targetPos = null;
+    let totalDistance = 0;
+    
+    for (let i = positionHistory.value.length - 1; i >= 1; i--) {
+      const pos = positionHistory.value[i];
+      const prevPos = positionHistory.value[i - 1];
+      
+      const segmentDistance = Math.sqrt(
+        Math.pow(pos.x - prevPos.x, 2) + 
+        Math.pow(pos.y - prevPos.y, 2)
+      );
+      
+      totalDistance += segmentDistance;
+      
+      if (totalDistance >= TARGET_DISTANCE) {
+        // Interpolate to get exact position
+        const remainingDistance = totalDistance - TARGET_DISTANCE;
+        const ratio = remainingDistance / segmentDistance;
+        
+        targetPos = {
+          x: prevPos.x + (pos.x - prevPos.x) * ratio,
+          y: prevPos.y + (pos.y - prevPos.y) * ratio
+        };
+        break;
+      }
+    }
+    
+    // If we found a position along the path
+    if (targetPos) {
+      // Move smoothly toward target position
+      const FOLLOW_SPEED = 0.25;
+      firstSegment.x += (targetPos.x - firstSegment.x) * FOLLOW_SPEED;
+      firstSegment.y += (targetPos.y - firstSegment.y) * FOLLOW_SPEED;
+    }
+    
+    lastPos = { x: firstSegment.x, y: firstSegment.y };
+  }
+  
+  // Each subsequent segment follows the one in front of it
+  for (let i = 1; i < tailSegments.value.length; i++) {
+    const segment = tailSegments.value[i];
+    const prevSegment = tailSegments.value[i - 1];
+    
+    // Initialize the segment if it's new
+    if (!segment.initialized) {
+      segment.x = prevSegment.x;
+      segment.y = prevSegment.y;
+      segment.initialized = true;
+      continue;
+    }
+    
+    // Calculate direction from this segment to the previous one
+    const dx = prevSegment.x - segment.x;
+    const dy = prevSegment.y - segment.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > 0) {
+      // Move toward previous segment while maintaining distance
+      const targetDistance = SEGMENT_SPACING;
+      
+      // If we're too far, move closer
+      if (distance > targetDistance * 1.2) {
+        const moveX = dx * 0.2;
+        const moveY = dy * 0.2;
+        segment.x += moveX;
+        segment.y += moveY;
+      } 
+      // If we're at about the right distance, follow normally
+      else if (distance > targetDistance * 0.8) {
+        const moveX = dx * 0.1;
+        const moveY = dy * 0.1;
+        segment.x += moveX;
+        segment.y += moveY;
+      }
+      // If we're too close, back away slightly
+      else {
+        const moveX = dx * 0.05;
+        const moveY = dy * 0.05;
+        segment.x += moveX;
+        segment.y += moveY;
+      }
+    }
+    
+    lastPos = { x: segment.x, y: segment.y };
+  }
 };
+
+// Handle mouse movement
+const handleMouseMove = (event) => {
+  // Get mouse position relative to the container
+  const rect = gameRef.value.getBoundingClientRect();
+  cursorPosition.value = {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top
+  };
+  
+  // Activate mouse control when mouse moves
+  isMouseControlActive.value = true;
+  
+  // Automatically deactivate mouse control sooner
+  clearTimeout(mouseControlTimeout);
+  mouseControlTimeout = setTimeout(() => {
+    // Only disable if no keys are being pressed
+    if (!keys.value.ArrowUp && !keys.value.ArrowDown && 
+        !keys.value.ArrowLeft && !keys.value.ArrowRight) {
+      isMouseControlActive.value = false;
+    }
+  }, 2000); // 2 seconds of inactivity disables mouse control (reduced from 5)
+};
+
+// Timeout for mouse control deactivation
+let mouseControlTimeout;
 
 const updateGame = () => {
   // Store current position in history
@@ -197,30 +351,68 @@ const updateGame = () => {
     positionHistory.value = positionHistory.value.slice(-MAX_HISTORY);
   }
   
-  // Calculate acceleration based on keys pressed
+  // Calculate acceleration based on input method
   acceleration.value.x = 0;
   acceleration.value.y = 0;
   
-  if (keys.value.ArrowUp) acceleration.value.y -= ACCEL_RATE;
-  if (keys.value.ArrowDown) acceleration.value.y += ACCEL_RATE;
-  if (keys.value.ArrowLeft) acceleration.value.x -= ACCEL_RATE;
-  if (keys.value.ArrowRight) acceleration.value.x += ACCEL_RATE;
+  // Handle keyboard input
+  if (keys.value.ArrowUp) {
+    acceleration.value.y -= ACCEL_RATE;
+    isMouseControlActive.value = false; // Keyboard input overrides mouse
+  }
+  if (keys.value.ArrowDown) {
+    acceleration.value.y += ACCEL_RATE;
+    isMouseControlActive.value = false;
+  }
+  if (keys.value.ArrowLeft) {
+    acceleration.value.x -= ACCEL_RATE;
+    isMouseControlActive.value = false;
+  }
+  if (keys.value.ArrowRight) {
+    acceleration.value.x += ACCEL_RATE;
+    isMouseControlActive.value = false;
+  }
+  
+  // Handle mouse input if active and no keyboard keys are pressed
+  if (isMouseControlActive.value) {
+    // Calculate vector from dot to cursor
+    const dx = cursorPosition.value.x - position.value.x - DOT_SIZE/2;
+    const dy = cursorPosition.value.y - position.value.y - DOT_SIZE/2;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Only apply force if the cursor is not too close to the dot
+    if (distance > 5) {
+      // Reduce acceleration strength for mouse control
+      const MOUSE_ACCEL_RATE = 0.2; // Much gentler than keyboard control
+      
+      // Apply a gentler force that increases with distance, but caps out
+      const force = Math.min(distance / 100, 1.0); // At most 100% strength
+      
+      // Normalize and apply force toward cursor, but more gently
+      acceleration.value.x += (dx / distance) * MOUSE_ACCEL_RATE * force;
+      acceleration.value.y += (dy / distance) * MOUSE_ACCEL_RATE * force;
+    }
+  }
   
   // Apply acceleration to velocity
   velocity.value.x += acceleration.value.x;
   velocity.value.y += acceleration.value.y;
   
-  // Apply friction (deceleration) if no keys pressed in that direction
+  // Apply friction with stronger damping for mouse control
   if (!keys.value.ArrowLeft && !keys.value.ArrowRight) {
-    velocity.value.x *= DECEL_RATE;
+    // More damping when using mouse control for smoother stops
+    const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
+    velocity.value.x *= frictionFactor;
   }
   if (!keys.value.ArrowUp && !keys.value.ArrowDown) {
-    velocity.value.y *= DECEL_RATE;
+    const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
+    velocity.value.y *= frictionFactor;
   }
   
-  // Limit maximum speed
-  velocity.value.x = Math.max(Math.min(velocity.value.x, MAX_SPEED), -MAX_SPEED);
-  velocity.value.y = Math.max(Math.min(velocity.value.y, MAX_SPEED), -MAX_SPEED);
+  // Limit maximum speed (slower for mouse control)
+  const currentMaxSpeed = isMouseControlActive.value ? MAX_SPEED * 0.7 : MAX_SPEED;
+  velocity.value.x = Math.max(Math.min(velocity.value.x, currentMaxSpeed), -currentMaxSpeed);
+  velocity.value.y = Math.max(Math.min(velocity.value.y, currentMaxSpeed), -currentMaxSpeed);
   
   // Apply velocity to position
   position.value.x += velocity.value.x;
@@ -284,6 +476,14 @@ onMounted(() => {
   for (let i = 0; i < 3; i++) {
     spawnCollectibleDot();
   }
+  
+  // Initialize cursor position
+  if (gameRef.value) {
+    cursorPosition.value = {
+      x: (gameRef.value.clientWidth) / 2,
+      y: (gameRef.value.clientHeight) / 2
+    };
+  }
 });
 
 onUnmounted(() => {
@@ -295,6 +495,11 @@ onUnmounted(() => {
   // Clear the spawn interval
   if (spawnIntervalId) {
     clearInterval(spawnIntervalId);
+  }
+  
+  // Clear mouse control timeout
+  if (mouseControlTimeout) {
+    clearTimeout(mouseControlTimeout);
   }
 });
 </script>
@@ -312,12 +517,13 @@ html, body {
   height: 100vh;
   position: relative;
   outline: none;
+  cursor: none; /* Hide the cursor for a cleaner experience */
 }
 
 .red-dot {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 80px;
+  height: 80px;
   background-color: red;
   border-radius: 50%;
   z-index: 100;
@@ -325,19 +531,20 @@ html, body {
 
 .tail-segment {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
-  /* Each segment will have its own color via inline style */
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  z-index: 90;
 }
 
 .collectible-dot {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
-  /* Each dot will have its own color via inline style */
   animation: pulse 1.5s infinite alternate;
+  z-index: 80;
 }
 
 @keyframes pulse {
@@ -381,5 +588,24 @@ html, body {
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
   }
+}
+
+/* Add a subtle squish effect when segments collide */
+@keyframes squish {
+  0% { transform: scale(1, 1); }
+  50% { transform: scale(1.1, 0.9); }
+  100% { transform: scale(1, 1); }
+}
+
+/* Add a cursor indicator */
+.cursor-indicator {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid white;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 200;
 }
 </style>
