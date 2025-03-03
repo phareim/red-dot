@@ -8,6 +8,12 @@
     tabindex="0" 
     ref="gameRef"
   >
+    <!-- Score counter -->
+    <div class="score-display">
+      <span class="score-value">{{ score }}</span>
+      <span class="score-label">POINTS</span>
+    </div>
+    
     <div 
       class="red-dot player" 
       :class="{ 'pulse-collect': isCollecting }"
@@ -96,6 +102,9 @@ const COLORS = [
 // Add a new ref to track collection state
 const isCollecting = ref(false);
 
+// Add score counter
+const score = ref(0);
+
 const handleKeyDown = (event) => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
     keys.value[event.key] = true;
@@ -165,6 +174,24 @@ const checkCollisions = () => {
     );
     
     if (collision) {
+      // Increment score!
+      score.value += 10;
+      
+      // Show a temporary score popup at the collection point
+      const scorePopup = document.createElement('div');
+      scorePopup.className = 'score-popup';
+      scorePopup.textContent = '+10';
+      scorePopup.style.left = `${dot.x + DOT_SIZE/2}px`;
+      scorePopup.style.top = `${dot.y}px`;
+      gameRef.value.appendChild(scorePopup);
+      
+      // Remove popup after animation
+      setTimeout(() => {
+        if (scorePopup.parentNode) {
+          scorePopup.parentNode.removeChild(scorePopup);
+        }
+      }, 1000);
+      
       // Find where the new segment should be positioned
       const lastIndex = tailSegments.value.length - 1;
       
@@ -607,5 +634,62 @@ html, body {
   transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 200;
+}
+
+/* Score counter styles */
+.score-display {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-family: 'Arial', sans-serif;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 15px;
+  border-radius: 10px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  z-index: 200;
+}
+
+.score-value {
+  font-size: 42px;
+  font-weight: bold;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+}
+
+.score-label {
+  font-size: 14px;
+  letter-spacing: 2px;
+  opacity: 0.8;
+}
+
+/* Score popup animation */
+.score-popup {
+  position: absolute;
+  color: #FFD700;
+  font-size: 24px;
+  font-weight: bold;
+  font-family: 'Arial', sans-serif;
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  animation: score-float 1s ease-out forwards;
+  z-index: 150;
+}
+
+@keyframes score-float {
+  0% {
+    transform: translate(-50%, 0) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(-50%, -20px) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -60px) scale(1);
+    opacity: 0;
+  }
 }
 </style>
