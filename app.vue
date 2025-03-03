@@ -87,15 +87,15 @@ const MAX_COLLECTIBLE_DOTS = 10; // Maximum dots on screen
 
 // Colors for the collectible dots
 const COLORS = [
-  '#FF5252', // Red
+  //'#FF5252', // Red
   '#FF9800', // Orange
   '#FFEB3B', // Yellow
   '#4CAF50', // Green
   '#2196F3', // Blue
-  '#673AB7', // Purple
-  '#E91E63', // Pink
-  '#00BCD4', // Cyan
-  '#8BC34A', // Light Green
+  //'#673AB7', // Purple
+  //'#E91E63', // Pink
+  //'#00BCD4', // Cyan
+  //'#8BC34A', // Light Green
   '#9C27B0'  // Magenta
 ];
 
@@ -192,29 +192,16 @@ const checkCollisions = () => {
         }
       }, 1000);
       
-      // Find where the new segment should be positioned
-      const lastIndex = tailSegments.value.length - 1;
-      
-      let newX, newY;
-      
-      if (lastIndex >= 0) {
-        // Add behind the last segment
-        const lastSegment = tailSegments.value[lastIndex];
-        newX = lastSegment.x;
-        newY = lastSegment.y;
-      } else {
-        // First segment - add behind the player
-        newX = position.value.x;
-        newY = position.value.y;
-      }
-      
-      // Add the new segment
-      tailSegments.value.push({
-        x: newX,
-        y: newY,
+      // Add new segment at the FRONT of the snake (right behind the player)
+      tailSegments.value.unshift({
+        x: position.value.x,
+        y: position.value.y,
         color: dot.color,
-        initialized: false // Will be properly positioned in next update
+        initialized: false // Will be positioned properly in next frame
       });
+      
+      // Check for matching colors after adding the new segment
+      checkForColorMatches();
       
       // Trigger the pulse effect!
       isCollecting.value = true;
@@ -474,12 +461,121 @@ const updateGame = () => {
   // Update tail segment positions
   updateTailSegments();
   
+  // Check for color matches (may happen during movement too)
+  checkForColorMatches();
+  
   // Continue animation
   animationFrameId = requestAnimationFrame(updateGame);
 };
 
 let animationFrameId;
 let spawnIntervalId;
+
+// Update the color-matching function to require three matching dots
+const checkForColorMatches = () => {
+  // Need at least 3 segments to have a match
+  if (tailSegments.value.length < 3) return;
+  
+  // Check for three consecutive segments with the same color
+  for (let i = 0; i < tailSegments.value.length - 2; i++) {
+    const firstSegment = tailSegments.value[i];
+    const secondSegment = tailSegments.value[i + 1];
+    const thirdSegment = tailSegments.value[i + 2];
+    
+    // If all three colors match, create a bigger explosion!
+    if (firstSegment.color === secondSegment.color && secondSegment.color === thirdSegment.color) {
+      // Calculate middle position for the explosion (center of the three segments)
+      const explosionX = (firstSegment.x + secondSegment.x + thirdSegment.x) / 3;
+      const explosionY = (firstSegment.y + secondSegment.y + thirdSegment.y) / 3;
+      
+      // Create a bigger explosion effect
+      createExplosionEffect(explosionX, explosionY, firstSegment.color, 30); // More particles!
+      
+      // Add bonus points - more points for 3 matches!
+      score.value += 100;
+      
+      // Create score popup
+      const scorePopup = document.createElement('div');
+      scorePopup.className = 'score-popup explosion-score';
+      scorePopup.textContent = '+100';
+      scorePopup.style.left = `${explosionX}px`;
+      scorePopup.style.top = `${explosionY}px`;
+      gameRef.value.appendChild(scorePopup);
+      
+      // Remove after animation
+      setTimeout(() => {
+        if (scorePopup.parentNode) {
+          scorePopup.parentNode.removeChild(scorePopup);
+        }
+      }, 1500);
+      
+      // Remove all three segments
+      tailSegments.value.splice(i, 3);
+      
+      // We modified the array, so return early to avoid index issues
+      return;
+    }
+  }
+};
+
+// Update the explosion effect to allow for bigger explosions
+const createExplosionEffect = (x, y, color, particleCount = 20) => {
+  // Number of particles in explosion - allow for variable amounts
+  const PARTICLE_COUNT = particleCount;
+  
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    // Create a particle element
+    const particle = document.createElement('div');
+    particle.className = 'explosion-particle';
+    
+    // Set particle position and color
+    particle.style.left = `${x}px`;
+    particle.style.top = `${y}px`;
+    particle.style.backgroundColor = color;
+    
+    // Calculate random direction and speed
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 5;
+    const distance = 20 + Math.random() * 100; // Bigger explosion radius
+    
+    // Set particle animation properties
+    particle.style.setProperty('--angle', angle + 'rad');
+    particle.style.setProperty('--speed', speed);
+    particle.style.setProperty('--distance', distance + 'px');
+    
+    // Add particle to the DOM
+    gameRef.value.appendChild(particle);
+    
+    // Remove particle after animation completes
+    setTimeout(() => {
+      if (particle.parentNode) {
+        particle.parentNode.removeChild(particle);
+      }
+    }, 1000);
+  }
+  
+  // Create a bigger flash for triple matches
+  const flash = document.createElement('div');
+  flash.className = 'explosion-flash';
+  flash.style.left = `${x}px`;
+  flash.style.top = `${y}px`;
+  flash.style.backgroundColor = color;
+  
+  // Adjust flash size based on particle count
+  if (particleCount > 20) {
+    flash.style.width = '150px';
+    flash.style.height = '150px';
+  }
+  
+  gameRef.value.appendChild(flash);
+  
+  // Remove flash after animation
+  setTimeout(() => {
+    if (flash.parentNode) {
+      flash.parentNode.removeChild(flash);
+    }
+  }, 500);
+};
 
 onMounted(() => {
   // Center the dot
@@ -689,6 +785,84 @@ html, body {
   }
   100% {
     transform: translate(-50%, -60px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* Explosion particle effect */
+.explosion-particle {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: explode 1s ease-out forwards;
+  z-index: 150;
+}
+
+@keyframes explode {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: 
+      translate(
+        calc(-50% + (cos(var(--angle)) * var(--distance))), 
+        calc(-50% + (sin(var(--angle)) * var(--distance)))
+      ) 
+      scale(0);
+    opacity: 0;
+  }
+}
+
+/* Explosion flash effect */
+.explosion-flash {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.7;
+  pointer-events: none;
+  animation: flash 0.5s ease-out forwards;
+  z-index: 140;
+}
+
+@keyframes flash {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(3);
+    opacity: 0;
+  }
+}
+
+/* Larger score popup for explosions */
+.explosion-score {
+  font-size: 36px !important;
+  color: gold !important;
+  animation: explosion-score-float 1.5s ease-out forwards !important;
+}
+
+@keyframes explosion-score-float {
+  0% {
+    transform: translate(-50%, 0) scale(0.8);
+    opacity: 0;
+  }
+  20% {
+    transform: translate(-50%, -30px) scale(1.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -90px) scale(1);
     opacity: 0;
   }
 }
