@@ -92,10 +92,10 @@ const COLORS = [
   '#FFEB3B', // Yellow
   '#4CAF50', // Green
   '#2196F3', // Blue
-  '#673AB7', // Purple
+  //'#673AB7', // Purple
   '#E91E63', // Pink
   '#00BCD4', // Cyan
-  '#8BC34A', // Light Green
+  //'#8BC34A', // Light Green
   '#9C27B0'  // Magenta
 ];
 
@@ -203,13 +203,14 @@ const checkCollisions = () => {
     );
     
     if (collision) {
-      // Increment score!
-      score.value += 10;
+      // Calculate score based on snake length (including the new segment we're about to add)
+      const pointsEarned = tailSegments.value.length + 1;
+      score.value += pointsEarned;
       
       // Show a temporary score popup at the collection point
       const scorePopup = document.createElement('div');
       scorePopup.className = 'score-popup';
-      scorePopup.textContent = '+10';
+      scorePopup.textContent = `+${pointsEarned}`;
       scorePopup.style.left = `${dot.x + DOT_SIZE/2}px`;
       scorePopup.style.top = `${dot.y}px`;
       gameRef.value.appendChild(scorePopup);
@@ -505,46 +506,87 @@ const updateGame = () => {
 let animationFrameId;
 let spawnIntervalId;
 
-// Update the color-matching function to require three matching dots
+// Update the color-matching function to require just TWO matching dots
 const checkForColorMatches = () => {
-  // Need at least 3 segments to have a match
-  if (tailSegments.value.length < 3) return;
+  // Need at least 2 segments to have a match
+  if (tailSegments.value.length < 2) return;
   
-  // Check for three consecutive segments with the same color
-  for (let i = 0; i < tailSegments.value.length - 2; i++) {
+  // Check for two consecutive segments with the same color
+  for (let i = 0; i < tailSegments.value.length - 1; i++) {
     const firstSegment = tailSegments.value[i];
     const secondSegment = tailSegments.value[i + 1];
-    const thirdSegment = tailSegments.value[i + 2];
     
-    // If all three colors match, create a bigger explosion!
-    if (firstSegment.color === secondSegment.color && secondSegment.color === thirdSegment.color) {
-      // Calculate middle position for the explosion (center of the three segments)
-      const explosionX = (firstSegment.x + secondSegment.x + thirdSegment.x) / 3;
-      const explosionY = (firstSegment.y + secondSegment.y + thirdSegment.y) / 3;
+    // If both colors match, create a color explosion!
+    if (firstSegment.color === secondSegment.color) {
+      const matchedColor = firstSegment.color;
       
-      // Create a bigger explosion effect
-      createExplosionEffect(explosionX, explosionY, firstSegment.color, 30); // More particles!
+      // Calculate the bonus points: 3 * snake length + 50 (keeping same formula)
+      const snakeLength = tailSegments.value.length;
+      const bonusPoints = (3 * snakeLength) + 50;
       
-      // Add bonus points - more points for 3 matches!
-      score.value += 100;
+      // Add the bonus points
+      score.value += bonusPoints;
       
-      // Create score popup
+      // Create multiple explosions, one for each removed segment
+      let explosionPositions = [];
+      
+      // Find ALL segments with the matching color
+      const indicesToRemove = [];
+      tailSegments.value.forEach((segment, index) => {
+        if (segment.color === matchedColor) {
+          // Record the explosion positions
+          explosionPositions.push({ x: segment.x, y: segment.y });
+          indicesToRemove.push(index);
+        }
+      });
+      
+      // Create a master explosion at the center of the two matched segments
+      const centerX = (firstSegment.x + secondSegment.x) / 2;
+      const centerY = (firstSegment.y + secondSegment.y) / 2;
+      
+      // Create a larger explosion at the center
+      createExplosionEffect(centerX, centerY, matchedColor, 40);
+      
+      // Create smaller explosions at each removed segment position
+      explosionPositions.forEach(pos => {
+        createExplosionEffect(pos.x, pos.y, matchedColor, 15);
+      });
+      
+      // Create score popup for the big bonus
       const scorePopup = document.createElement('div');
       scorePopup.className = 'score-popup explosion-score';
-      scorePopup.textContent = '+100';
-      scorePopup.style.left = `${explosionX}px`;
-      scorePopup.style.top = `${explosionY}px`;
+      scorePopup.textContent = `+${bonusPoints}`;
+      scorePopup.style.left = `${centerX}px`;
+      scorePopup.style.top = `${centerY}px`;
       gameRef.value.appendChild(scorePopup);
       
-      // Remove after animation
+      // Remove popup after animation
       setTimeout(() => {
         if (scorePopup.parentNode) {
           scorePopup.parentNode.removeChild(scorePopup);
         }
       }, 1500);
       
-      // Remove all three segments
-      tailSegments.value.splice(i, 3);
+      // Create a text message explaining what happened
+      const messagePopup = document.createElement('div');
+      messagePopup.className = 'color-match-message';
+      messagePopup.textContent = `${matchedColor.toUpperCase()} CHAIN REACTION!`;
+      messagePopup.style.left = '50%';
+      messagePopup.style.top = '50%';
+      messagePopup.style.backgroundColor = matchedColor;
+      gameRef.value.appendChild(messagePopup);
+      
+      // Remove the message after animation
+      setTimeout(() => {
+        if (messagePopup.parentNode) {
+          messagePopup.parentNode.removeChild(messagePopup);
+        }
+      }, 1500);
+      
+      // Remove ALL segments with the matching color (in reverse order to avoid index issues)
+      for (let j = indicesToRemove.length - 1; j >= 0; j--) {
+        tailSegments.value.splice(indicesToRemove[j], 1);
+      }
       
       // We modified the array, so return early to avoid index issues
       return;
@@ -897,6 +939,43 @@ html, body {
   }
   100% {
     transform: translate(-50%, -90px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* Color match message */
+.color-match-message {
+  position: absolute;
+  color: white;
+  font-size: 38px;
+  font-weight: bold;
+  font-family: 'Arial', sans-serif;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+  padding: 15px 25px;
+  border-radius: 8px;
+  letter-spacing: 2px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 160;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.7);
+  animation: message-appear 1.5s ease-out forwards;
+}
+
+@keyframes message-appear {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 1;
+  }
+  75% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5);
     opacity: 0;
   }
 }
