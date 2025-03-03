@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow anyone to read the high scores
+    match /leaderboards/{leaderboardId} {
+      allow read: if true;
+      allow write: if false; // Only allow writes through our authenticated functions
+    }
+    
+    // Restrict player score writes to only their own documents
+    match /highscores/{playerId} {
+      allow read: if true;
+      allow write: if request.resource.data.score is number 
+                   && request.resource.data.name is string
+                   && request.resource.data.name.size() <= 50; // Basic validation
+    }
+  }
+} 

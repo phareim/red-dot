@@ -65,6 +65,13 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { 
+  saveHighScore as saveHighScoreToFirebase, 
+  getPlayerHighScore, 
+  getTopHighScores, 
+  initializeLeaderboardFromExistingData 
+} from '@/services/firebase';
+import { v4 as uuidv4 } from 'uuid';
 
 // Physics variables
 const position = ref({ x: 0, y: 0 });
@@ -132,6 +139,9 @@ const highScore = ref(0);
 // Add player name variable
 const playerName = ref('');
 
+// Add player ID variable for Firebase
+const playerId = ref('');
+
 // Load high score from localStorage
 const loadHighScore = () => {
   const savedHighScore = localStorage.getItem('snakeGameHighScore');
@@ -157,6 +167,18 @@ const loadPlayerName = () => {
 const savePlayerName = (name) => {
   playerName.value = name;
   localStorage.setItem('snakeGamePlayerName', name);
+};
+
+// Load or generate player ID
+const loadOrGeneratePlayerId = () => {
+  const savedPlayerId = localStorage.getItem('snakeGamePlayerId');
+  if (savedPlayerId) {
+    playerId.value = savedPlayerId;
+  } else {
+    // Generate a new UUID for the player
+    playerId.value = uuidv4();
+    localStorage.setItem('snakeGamePlayerId', playerId.value);
+  }
 };
 
 // Modify the spawn mechanism to adjust based on dot count
@@ -784,13 +806,68 @@ const showNameInputDialog = (isNewHighScore) => {
   });
 };
 
-// Handle name submission
-const handleNameSubmit = (name, dialog) => {
+// Sync high score with Firebase
+const syncHighScore = async () => {
+  try {
+    // Try to get high score from Firebase
+    const cloudData = await getPlayerHighScore(playerId.value);
+    
+    if (cloudData) {
+      // If cloud score is higher than local, update local
+      if (cloudData.score > highScore.value) {
+        highScore.value = cloudData.score;
+        saveHighScore();
+      } 
+      // If local score is higher than cloud, update cloud
+      else if (highScore.value > cloudData.score) {
+        await saveHighScoreToFirebase(playerName.value || 'Player', highScore.value, playerId.value);
+      }
+    } else if (highScore.value > 0) {
+      // If no cloud data but we have a local high score, upload it
+      await saveHighScoreToFirebase(playerName.value || 'Player', highScore.value, playerId.value);
+    }
+  } catch (error) {
+    console.error("Error syncing high score:", error);
+  }
+};
+
+// Update the checkHighScore function to also update Firebase
+const checkHighScore = async () => {
+  const isNewHighScore = score.value > highScore.value;
+  
+  if (isNewHighScore) {
+    highScore.value = score.value;
+    saveHighScore();
+    
+    // Also save to Firebase if we have a player name
+    if (playerName.value) {
+      try {
+        await saveHighScoreToFirebase(playerName.value, score.value, playerId.value);
+      } catch (error) {
+        console.error("Error saving high score to Firebase:", error);
+      }
+    }
+  }
+  
+  return isNewHighScore;
+};
+
+// Update handleNameSubmit to also save to Firebase
+const handleNameSubmit = async (name, dialog) => {
   const trimmedName = name.trim();
   const finalName = trimmedName || 'Player'; // Default to "Player" if empty
   
   // Save the player name
   savePlayerName(finalName);
+  
+  // Save high score to Firebase
+  if (score.value > 0) {
+    try {
+      await saveHighScoreToFirebase(finalName, score.value, playerId.value);
+    } catch (error) {
+      console.error("Error saving to Firebase after name submission:", error);
+    }
+  }
   
   // Remove the dialog
   gameRef.value.removeChild(dialog);
@@ -800,7 +877,7 @@ const handleNameSubmit = (name, dialog) => {
 };
 
 // Function to show the game over screen (moved from countdown)
-const showGameOverScreen = (isNewHighScore) => {
+const showGameOverScreen = async (isNewHighScore) => {
   // Show game over message
   const gameOverMsg = document.createElement('div');
   gameOverMsg.className = 'game-over-message';
@@ -810,10 +887,15 @@ const showGameOverScreen = (isNewHighScore) => {
     ? `<h2 class="new-highscore">NEW HIGH SCORE!</h2>` 
     : `<p class="highscore-info">High Score: ${highScore.value} ${playerName.value ? `(${playerName.value})` : ""}</p>`;
   
+  // Initially create the layout with a loading indicator for high scores
   gameOverMsg.innerHTML = `
     <h1>TIME'S UP!</h1>
     <p>Final Score: ${score.value} ${playerName.value ? `(${playerName.value})` : ""}</p>
     ${highScoreMessage}
+    <div class="global-highscores">
+      <h3>Global Top Scores</h3>
+      <div class="loading-scores">Loading scores...</div>
+    </div>
     <button class="restart-button">Play Again</button>
   `;
   
@@ -823,6 +905,64 @@ const showGameOverScreen = (isNewHighScore) => {
   const restartButton = gameOverMsg.querySelector('.restart-button');
   if (restartButton) {
     restartButton.addEventListener('click', restartGame);
+  }
+  
+  // Now fetch the top scores and update the display
+  try {
+    const topScores = await getTopHighScores(10); // Get top 10 scores
+    
+    if (topScores && topScores.length > 0) {
+      const highscoresContainer = gameOverMsg.querySelector('.global-highscores');
+      let highscoresHTML = `
+        <h3>Global Top Scores</h3>
+        <table class="highscores-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Player</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      topScores.forEach((scoreData, index) => {
+        // Check if this is the current player's score
+        const isCurrentPlayer = scoreData.id === playerId.value;
+        const rowClass = isCurrentPlayer ? 'current-player' : '';
+        
+        highscoresHTML += `
+          <tr class="${rowClass}">
+            <td>${index + 1}</td>
+            <td>${scoreData.name}</td>
+            <td>${scoreData.score}</td>
+          </tr>
+        `;
+      });
+      
+      highscoresHTML += `
+          </tbody>
+        </table>
+      `;
+      
+      // Replace the loading indicator with the actual scores
+      highscoresContainer.innerHTML = highscoresHTML;
+    } else {
+      // Handle case where there are no scores yet
+      const highscoresContainer = gameOverMsg.querySelector('.global-highscores');
+      highscoresContainer.innerHTML = `
+        <h3>Global Top Scores</h3>
+        <p class="no-scores">No scores recorded yet. You could be the first!</p>
+      `;
+    }
+  } catch (error) {
+    console.error("Error fetching top scores:", error);
+    // Show error message
+    const highscoresContainer = gameOverMsg.querySelector('.global-highscores');
+    highscoresContainer.innerHTML = `
+      <h3>Global Top Scores</h3>
+      <p class="scores-error">Could not load scores. Please check your connection.</p>
+    `;
   }
 };
 
@@ -859,18 +999,6 @@ const restartGame = () => {
   gameRef.value.focus();
 };
 
-// Modify the check high score function to also check for player name
-const checkHighScore = () => {
-  const isNewHighScore = score.value > highScore.value;
-  
-  if (isNewHighScore) {
-    highScore.value = score.value;
-    saveHighScore();
-  }
-  
-  return isNewHighScore;
-};
-
 onMounted(() => {
   // Center the dot
   if (gameRef.value) {
@@ -905,9 +1033,18 @@ onMounted(() => {
   // Start the countdown
   startCountdown();
   
-  // Load high score and player name from localStorage
+  // Load high score, player name and ID from localStorage
   loadHighScore();
   loadPlayerName();
+  loadOrGeneratePlayerId();
+  
+  // Sync with Firebase after a short delay to ensure we have loaded local data
+  setTimeout(async () => {
+    await syncHighScore();
+    
+    // Initialize the leaderboard if needed (only runs once)
+    await initializeLeaderboardFromExistingData();
+  }, 1000);
 });
 
 onUnmounted(() => {
@@ -1267,6 +1404,8 @@ html, body {
   font-family: 'Arial', sans-serif;
   z-index: 1000;
   box-shadow: 0 0 30px rgba(255, 82, 82, 0.5);
+  min-width: 450px;
+  max-width: 80%;
 }
 
 .game-over-message h1 {
@@ -1420,5 +1559,77 @@ html, body {
   background-color: #66BB6A;
   transform: scale(1.05);
   box-shadow: 0 0 15px rgba(76, 175, 80, 0.7);
+}
+
+/* Global high scores styles */
+.global-highscores {
+  margin-top: 15px;
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.global-highscores h3 {
+  color: #F5F5F5;
+  font-size: 22px;
+  margin-top: 0;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 8px;
+}
+
+.highscores-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: white;
+}
+
+.highscores-table th {
+  text-align: left;
+  padding: 8px;
+  color: #BBB;
+  font-size: 14px;
+  font-weight: normal;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.highscores-table td {
+  padding: 8px;
+  font-size: 16px;
+}
+
+.highscores-table tr:nth-child(odd) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.highscores-table tr.current-player {
+  background-color: rgba(76, 175, 80, 0.3);
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
+  animation: highlight-player 2s infinite alternate;
+}
+
+@keyframes highlight-player {
+  0% { background-color: rgba(76, 175, 80, 0.3); }
+  100% { background-color: rgba(76, 175, 80, 0.5); }
+}
+
+.loading-scores {
+  color: #BBB;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+.no-scores, .scores-error {
+  color: #BBB;
+  text-align: center;
+  padding: 15px;
+}
+
+.scores-error {
+  color: #FF9800;
 }
 </style>
