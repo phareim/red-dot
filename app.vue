@@ -749,16 +749,28 @@ const startCountdown = () => {
       clearInterval(countdownInterval);
       gameActive.value = false;
       
-      // Check if we got a new high score
-      const isNewHighScore = checkHighScore();
+      // We need to handle the Promise properly
+      // First clear the interval to prevent multiple executions
+      clearInterval(countdownInterval);
       
-      // Show name input if no name is set
-      if (!playerName.value) {
-        showNameInputDialog(isNewHighScore);
-      } else {
-        // Show regular game over screen
-        showGameOverScreen(isNewHighScore);
-      }
+      // Then check high score and continue with the game over flow
+      checkHighScore().then(isNewHighScore => {
+        // Show name input if no name is set
+        if (!playerName.value) {
+          showNameInputDialog(isNewHighScore);
+        } else {
+          // Show regular game over screen
+          showGameOverScreen(isNewHighScore);
+        }
+      }).catch(error => {
+        console.error("Error checking high score:", error);
+        // Fall back to showing game over without high score highlight
+        if (!playerName.value) {
+          showNameInputDialog(false);
+        } else {
+          showGameOverScreen(false);
+        }
+      });
     }
   }, 1000);
 };
@@ -889,6 +901,7 @@ const handleNameSubmit = async (name, dialog) => {
 
 // Function to show the game over screen (moved from countdown)
 const showGameOverScreen = async (isNewHighScore) => {
+  console.log("Showing game over screen", isNewHighScore);
   // Show game over message
   const gameOverMsg = document.createElement('div');
   gameOverMsg.className = 'game-over-message';
