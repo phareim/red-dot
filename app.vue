@@ -81,7 +81,7 @@ const MAX_HISTORY = 300; // Store more positions than we need for smooth followi
 const ACCEL_RATE = 0.5;
 const DECEL_RATE = 0.85; // Higher value = slower deceleration
 const MAX_SPEED = 8;
-const DOT_SIZE = 80;
+const DOT_SIZE = 60;
 const SPAWN_INTERVAL = 2000; // New dot every 2 seconds
 const MAX_COLLECTIBLE_DOTS = 10; // Maximum dots on screen
 
@@ -92,10 +92,10 @@ const COLORS = [
   '#FFEB3B', // Yellow
   '#4CAF50', // Green
   '#2196F3', // Blue
-  //'#673AB7', // Purple
-  //'#E91E63', // Pink
-  //'#00BCD4', // Cyan
-  //'#8BC34A', // Light Green
+  '#673AB7', // Purple
+  '#E91E63', // Pink
+  '#00BCD4', // Cyan
+  '#8BC34A', // Light Green
   '#9C27B0'  // Magenta
 ];
 
@@ -104,6 +104,32 @@ const isCollecting = ref(false);
 
 // Add score counter
 const score = ref(0);
+
+// Add new variables for dynamic spawn timing
+let currentSpawnInterval = SPAWN_INTERVAL;
+const FAST_SPAWN_INTERVAL = 500; // Spawn every 0.5 seconds when fewer dots
+
+// Modify the spawn mechanism to adjust based on dot count
+const adjustSpawnRate = () => {
+  // Clear any existing spawn interval
+  if (spawnIntervalId) {
+    clearInterval(spawnIntervalId);
+  }
+  
+  // Set spawn rate based on current dot count
+  const currentDotCount = collectibleDots.value.length;
+  
+  if (currentDotCount < 5) {
+    // Faster spawning when fewer dots
+    currentSpawnInterval = FAST_SPAWN_INTERVAL;
+  } else {
+    // Normal spawn rate
+    currentSpawnInterval = SPAWN_INTERVAL;
+  }
+  
+  // Start new interval with adjusted rate
+  spawnIntervalId = setInterval(spawnCollectibleDot, currentSpawnInterval);
+};
 
 const handleKeyDown = (event) => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
@@ -137,13 +163,16 @@ const getRandomPosition = () => {
   };
 };
 
-// Spawn a new collectible dot if we have fewer than the max
+// Modify the spawnCollectibleDot function to call adjustSpawnRate after spawning
 const spawnCollectibleDot = () => {
   if (collectibleDots.value.length < MAX_COLLECTIBLE_DOTS) {
     collectibleDots.value.push({
       ...getRandomPosition(),
       color: getRandomColor()
     });
+    
+    // Adjust spawn rate after adding a dot
+    adjustSpawnRate();
   }
 };
 
@@ -210,7 +239,12 @@ const checkCollisions = () => {
       }, 300); // Reset after animation duration
       
       // We've collided, remove the dot
-      return false;
+      const result = false;
+      
+      // Adjust spawn rate since we've collected a dot
+      adjustSpawnRate();
+      
+      return result;
     }
     
     // Keep the dot if no collision
@@ -592,11 +626,11 @@ onMounted(() => {
   // Start the game loop
   animationFrameId = requestAnimationFrame(updateGame);
   
-  // Start spawning collectible dots
-  spawnIntervalId = setInterval(spawnCollectibleDot, SPAWN_INTERVAL);
+  // Start spawning collectible dots with dynamic rate
+  adjustSpawnRate();
   
   // Spawn a few dots immediately
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     spawnCollectibleDot();
   }
   
