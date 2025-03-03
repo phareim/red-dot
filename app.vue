@@ -17,6 +17,7 @@
       <div class="highscore-container">
         <span class="highscore-value">{{ highScore }}</span>
         <span class="highscore-label">HIGH SCORE</span>
+        <span v-if="playerName" class="player-name">{{ playerName }}</span>
       </div>
       
       <div class="timer-container">
@@ -128,6 +129,9 @@ let countdownInterval = null;
 // Add high score variable
 const highScore = ref(0);
 
+// Add player name variable
+const playerName = ref('');
+
 // Load high score from localStorage
 const loadHighScore = () => {
   const savedHighScore = localStorage.getItem('snakeGameHighScore');
@@ -141,14 +145,18 @@ const saveHighScore = () => {
   localStorage.setItem('snakeGameHighScore', highScore.value.toString());
 };
 
-// Update high score if current score is higher
-const checkHighScore = () => {
-  if (score.value > highScore.value) {
-    highScore.value = score.value;
-    saveHighScore();
-    return true; // Return true if it's a new high score
+// Load player name from localStorage
+const loadPlayerName = () => {
+  const savedName = localStorage.getItem('snakeGamePlayerName');
+  if (savedName) {
+    playerName.value = savedName;
   }
-  return false;
+};
+
+// Save player name to localStorage
+const savePlayerName = (name) => {
+  playerName.value = name;
+  localStorage.setItem('snakeGamePlayerName', name);
 };
 
 // Modify the spawn mechanism to adjust based on dot count
@@ -698,7 +706,7 @@ const createExplosionEffect = (x, y, color, particleCount = 20) => {
   }, 500);
 };
 
-// Function to start the countdown - update to check high score when game ends
+// Update the startCountdown function to ask for player name when game ends
 const startCountdown = () => {
   countdownInterval = setInterval(() => {
     if (timeRemaining.value > 0) {
@@ -722,31 +730,100 @@ const startCountdown = () => {
       // Check if we got a new high score
       const isNewHighScore = checkHighScore();
       
-      // Show game over message
-      const gameOverMsg = document.createElement('div');
-      gameOverMsg.className = 'game-over-message';
-      
-      // Customize message based on whether it's a new high score
-      let highScoreMessage = isNewHighScore 
-        ? `<h2 class="new-highscore">NEW HIGH SCORE!</h2>` 
-        : `<p class="highscore-info">High Score: ${highScore.value}</p>`;
-      
-      gameOverMsg.innerHTML = `
-        <h1>TIME'S UP!</h1>
-        <p>Final Score: ${score.value}</p>
-        ${highScoreMessage}
-        <button class="restart-button">Play Again</button>
-      `;
-      
-      gameRef.value.appendChild(gameOverMsg);
-      
-      // Add event listener to restart button
-      const restartButton = gameOverMsg.querySelector('.restart-button');
-      if (restartButton) {
-        restartButton.addEventListener('click', restartGame);
+      // Show name input if no name is set
+      if (!playerName.value) {
+        showNameInputDialog(isNewHighScore);
+      } else {
+        // Show regular game over screen
+        showGameOverScreen(isNewHighScore);
       }
     }
   }, 1000);
+};
+
+// Function to show the name input dialog
+const showNameInputDialog = (isNewHighScore) => {
+  const nameDialog = document.createElement('div');
+  nameDialog.className = 'name-input-dialog';
+  
+  nameDialog.innerHTML = `
+    <h1>Game Over!</h1>
+    <p>Final Score: ${score.value}</p>
+    ${isNewHighScore ? '<h2 class="new-highscore">NEW HIGH SCORE!</h2>' : ''}
+    <p class="name-prompt">What's your name?</p>
+    <input type="text" class="name-input" maxlength="15" placeholder="Enter your name" autofocus>
+    <div class="button-container">
+      <button class="submit-name">Save & Continue</button>
+    </div>
+  `;
+  
+  gameRef.value.appendChild(nameDialog);
+  
+  // Focus the input field after dialog is visible
+  setTimeout(() => {
+    const nameInput = nameDialog.querySelector('.name-input');
+    if (nameInput) {
+      nameInput.focus();
+    }
+  }, 100);
+  
+  // Add event listeners for the form
+  const nameInput = nameDialog.querySelector('.name-input');
+  const submitButton = nameDialog.querySelector('.submit-name');
+  
+  // Submit on button click
+  submitButton.addEventListener('click', () => {
+    handleNameSubmit(nameInput.value, nameDialog);
+  });
+  
+  // Also submit on Enter key
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      handleNameSubmit(nameInput.value, nameDialog);
+    }
+  });
+};
+
+// Handle name submission
+const handleNameSubmit = (name, dialog) => {
+  const trimmedName = name.trim();
+  const finalName = trimmedName || 'Player'; // Default to "Player" if empty
+  
+  // Save the player name
+  savePlayerName(finalName);
+  
+  // Remove the dialog
+  gameRef.value.removeChild(dialog);
+  
+  // Show the game over screen
+  showGameOverScreen(score.value >= highScore.value);
+};
+
+// Function to show the game over screen (moved from countdown)
+const showGameOverScreen = (isNewHighScore) => {
+  // Show game over message
+  const gameOverMsg = document.createElement('div');
+  gameOverMsg.className = 'game-over-message';
+  
+  // Customize message based on whether it's a new high score
+  let highScoreMessage = isNewHighScore 
+    ? `<h2 class="new-highscore">NEW HIGH SCORE!</h2>` 
+    : `<p class="highscore-info">High Score: ${highScore.value} ${playerName.value ? `(${playerName.value})` : ""}</p>`;
+  
+  gameOverMsg.innerHTML = `
+    <h1>TIME'S UP!</h1>
+    <p>Final Score: ${score.value} ${playerName.value ? `(${playerName.value})` : ""}</p>
+    ${highScoreMessage}
+    <button class="restart-button">Play Again</button>
+  `;
+  
+  gameRef.value.appendChild(gameOverMsg);
+  
+  // Add event listener to restart button
+  const restartButton = gameOverMsg.querySelector('.restart-button');
+  if (restartButton) {
+    restartButton.addEventListener('click', restartGame);
+  }
 };
 
 // Function to restart the game
@@ -780,6 +857,18 @@ const restartGame = () => {
   // Reset history and reset focus on game container
   positionHistory.value = [];
   gameRef.value.focus();
+};
+
+// Modify the check high score function to also check for player name
+const checkHighScore = () => {
+  const isNewHighScore = score.value > highScore.value;
+  
+  if (isNewHighScore) {
+    highScore.value = score.value;
+    saveHighScore();
+  }
+  
+  return isNewHighScore;
 };
 
 onMounted(() => {
@@ -816,8 +905,9 @@ onMounted(() => {
   // Start the countdown
   startCountdown();
   
-  // Load high score from localStorage
+  // Load high score and player name from localStorage
   loadHighScore();
+  loadPlayerName();
 });
 
 onUnmounted(() => {
@@ -1253,5 +1343,82 @@ html, body {
   font-size: 20px;
   color: #aaa;
   margin: 10px 0;
+}
+
+/* Player name styles */
+.player-name {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 5px;
+  font-style: italic;
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+/* Name input dialog */
+.name-input-dialog {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.85);
+  border: 3px solid #4CAF50;
+  border-radius: 15px;
+  padding: 30px 50px;
+  text-align: center;
+  color: white;
+  font-family: 'Arial', sans-serif;
+  z-index: 1000;
+  box-shadow: 0 0 30px rgba(76, 175, 80, 0.5);
+  min-width: 400px;
+}
+
+.name-input-dialog h1 {
+  font-size: 36px;
+  margin: 0 0 15px 0;
+  color: white;
+}
+
+.name-prompt {
+  font-size: 18px;
+  margin: 20px 0 15px 0;
+  color: #ccc;
+}
+
+.name-input {
+  font-size: 20px;
+  padding: 12px 15px;
+  border: none;
+  border-radius: 8px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.9);
+  margin-bottom: 25px;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  text-align: center;
+}
+
+.button-container {
+  display: flex;
+  justify-content: center;
+}
+
+.submit-name {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 18px;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: bold;
+}
+
+.submit-name:hover {
+  background-color: #66BB6A;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(76, 175, 80, 0.7);
 }
 </style>
