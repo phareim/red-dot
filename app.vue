@@ -70,12 +70,8 @@ import {
   getPlayerHighScore, 
   getTopHighScores, 
   initializeLeaderboardFromExistingData,
-  forceEnableNetwork,
-  testFirestoreConnection
 } from '@/services/firebase';
 import { v4 as uuidv4 } from 'uuid';
-import { doc, setDoc } from 'firebase/firestore';
-import { getFirestore } from "firebase/firestore";
 
 // Physics variables
 const position = ref({ x: 0, y: 0 });
@@ -145,9 +141,6 @@ const playerName = ref('');
 
 // Add player ID variable for Firebase
 const playerId = ref('');
-
-// Import the database directly
-const db = getFirestore();
 
 // Load high score from localStorage
 const loadHighScore = () => {
@@ -1017,7 +1010,7 @@ const restartGame = () => {
   gameRef.value.focus();
 };
 
-onMounted(async () => {
+onMounted(() => {
   // Center the dot
   if (gameRef.value) {
     position.value = {
@@ -1056,21 +1049,12 @@ onMounted(async () => {
   loadPlayerName();
   loadOrGeneratePlayerId();
   
-  // Test Firestore connection and force enable network
-  await forceEnableNetwork();
-  const isConnected = await testFirestoreConnection();
-  console.log("Firestore connection status:", isConnected ? "Online" : "Offline");
-  
   // Sync with Firebase after a short delay to ensure we have loaded local data
   setTimeout(async () => {
     await syncHighScore();
     
-    // Only initialize the leaderboard if we're online
-    if (await testFirestoreConnection()) {
-      await initializeLeaderboardFromExistingData();
-    } else {
-      console.warn("Skipping leaderboard initialization - device is offline");
-    }
+    // Initialize the leaderboard from existing data (if needed)
+    await initializeLeaderboardFromExistingData();
   }, 1000);
 });
 
@@ -1095,23 +1079,6 @@ onUnmounted(() => {
     clearInterval(countdownInterval);
   }
 });
-
-// Add a simple test function
-const testFirebaseWrite = async () => {
-  try {
-    await forceEnableNetwork(); // Make sure network is enabled
-    
-    const testRef = doc(db, "test", "test-" + new Date().getTime());
-    await setDoc(testRef, { 
-      test: true, 
-      timestamp: new Date(),
-      message: "Test document from game"
-    });
-    console.log("✅ TEST DOCUMENT WRITTEN SUCCESSFULLY");
-  } catch (error) {
-    console.error("❌ ERROR WRITING TEST DOCUMENT:", error);
-  }
-};
 </script>
 
 <style>
