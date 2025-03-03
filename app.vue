@@ -8,10 +8,20 @@
     tabindex="0" 
     ref="gameRef"
   >
-    <!-- Score counter -->
+    <!-- Score counter, high score and timer -->
     <div class="score-display">
       <span class="score-value">{{ score }}</span>
       <span class="score-label">POINTS</span>
+      
+      <div class="highscore-container">
+        <span class="highscore-value">{{ highScore }}</span>
+        <span class="highscore-label">HIGH SCORE</span>
+      </div>
+      
+      <div class="timer-container">
+        <span class="timer-value" :class="{ 'timer-low': timeRemaining <= 5 }">{{ timeRemaining }}</span>
+        <span class="timer-label">SECONDS</span>
+      </div>
     </div>
     
     <div 
@@ -108,6 +118,37 @@ const score = ref(0);
 // Add new variables for dynamic spawn timing
 let currentSpawnInterval = SPAWN_INTERVAL;
 const FAST_SPAWN_INTERVAL = 500; // Spawn every 0.5 seconds when fewer dots
+
+// Add timer variables
+const timeRemaining = ref(20);
+const gameActive = ref(true);
+let countdownInterval = null;
+
+// Add high score variable
+const highScore = ref(0);
+
+// Load high score from localStorage
+const loadHighScore = () => {
+  const savedHighScore = localStorage.getItem('snakeGameHighScore');
+  if (savedHighScore !== null) {
+    highScore.value = parseInt(savedHighScore);
+  }
+};
+
+// Save high score to localStorage
+const saveHighScore = () => {
+  localStorage.setItem('snakeGameHighScore', highScore.value.toString());
+};
+
+// Update high score if current score is higher
+const checkHighScore = () => {
+  if (score.value > highScore.value) {
+    highScore.value = score.value;
+    saveHighScore();
+    return true; // Return true if it's a new high score
+  }
+  return false;
+};
 
 // Modify the spawn mechanism to adjust based on dot count
 const adjustSpawnRate = () => {
@@ -393,114 +434,117 @@ const handleMouseMove = (event) => {
 let mouseControlTimeout;
 
 const updateGame = () => {
-  // Store current position in history
-  positionHistory.value.push({...position.value});
-  // Limit history size
-  if (positionHistory.value.length > MAX_HISTORY) {
-    positionHistory.value = positionHistory.value.slice(-MAX_HISTORY);
-  }
-  
-  // Calculate acceleration based on input method
-  acceleration.value.x = 0;
-  acceleration.value.y = 0;
-  
-  // Handle keyboard input
-  if (keys.value.ArrowUp) {
-    acceleration.value.y -= ACCEL_RATE;
-    isMouseControlActive.value = false; // Keyboard input overrides mouse
-  }
-  if (keys.value.ArrowDown) {
-    acceleration.value.y += ACCEL_RATE;
-    isMouseControlActive.value = false;
-  }
-  if (keys.value.ArrowLeft) {
-    acceleration.value.x -= ACCEL_RATE;
-    isMouseControlActive.value = false;
-  }
-  if (keys.value.ArrowRight) {
-    acceleration.value.x += ACCEL_RATE;
-    isMouseControlActive.value = false;
-  }
-  
-  // Handle mouse input if active and no keyboard keys are pressed
-  if (isMouseControlActive.value) {
-    // Calculate vector from dot to cursor
-    const dx = cursorPosition.value.x - position.value.x - DOT_SIZE/2;
-    const dy = cursorPosition.value.y - position.value.y - DOT_SIZE/2;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+  // Only update the game if it's active
+  if (gameActive.value) {
+    // Store current position in history
+    positionHistory.value.push({...position.value});
+    // Limit history size
+    if (positionHistory.value.length > MAX_HISTORY) {
+      positionHistory.value = positionHistory.value.slice(-MAX_HISTORY);
+    }
     
-    // Only apply force if the cursor is not too close to the dot
-    if (distance > 5) {
-      // Reduce acceleration strength for mouse control
-      const MOUSE_ACCEL_RATE = 0.2; // Much gentler than keyboard control
+    // Calculate acceleration based on input method
+    acceleration.value.x = 0;
+    acceleration.value.y = 0;
+    
+    // Handle keyboard input
+    if (keys.value.ArrowUp) {
+      acceleration.value.y -= ACCEL_RATE;
+      isMouseControlActive.value = false; // Keyboard input overrides mouse
+    }
+    if (keys.value.ArrowDown) {
+      acceleration.value.y += ACCEL_RATE;
+      isMouseControlActive.value = false;
+    }
+    if (keys.value.ArrowLeft) {
+      acceleration.value.x -= ACCEL_RATE;
+      isMouseControlActive.value = false;
+    }
+    if (keys.value.ArrowRight) {
+      acceleration.value.x += ACCEL_RATE;
+      isMouseControlActive.value = false;
+    }
+    
+    // Handle mouse input if active and no keyboard keys are pressed
+    if (isMouseControlActive.value) {
+      // Calculate vector from dot to cursor
+      const dx = cursorPosition.value.x - position.value.x - DOT_SIZE/2;
+      const dy = cursorPosition.value.y - position.value.y - DOT_SIZE/2;
+      const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // Apply a gentler force that increases with distance, but caps out
-      const force = Math.min(distance / 100, 1.0); // At most 100% strength
+      // Only apply force if the cursor is not too close to the dot
+      if (distance > 5) {
+        // Reduce acceleration strength for mouse control
+        const MOUSE_ACCEL_RATE = 0.2; // Much gentler than keyboard control
+        
+        // Apply a gentler force that increases with distance, but caps out
+        const force = Math.min(distance / 100, 1.0); // At most 100% strength
+        
+        // Normalize and apply force toward cursor, but more gently
+        acceleration.value.x += (dx / distance) * MOUSE_ACCEL_RATE * force;
+        acceleration.value.y += (dy / distance) * MOUSE_ACCEL_RATE * force;
+      }
+    }
+    
+    // Apply acceleration to velocity
+    velocity.value.x += acceleration.value.x;
+    velocity.value.y += acceleration.value.y;
+    
+    // Apply friction with stronger damping for mouse control
+    if (!keys.value.ArrowLeft && !keys.value.ArrowRight) {
+      // More damping when using mouse control for smoother stops
+      const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
+      velocity.value.x *= frictionFactor;
+    }
+    if (!keys.value.ArrowUp && !keys.value.ArrowDown) {
+      const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
+      velocity.value.y *= frictionFactor;
+    }
+    
+    // Limit maximum speed (slower for mouse control)
+    const currentMaxSpeed = isMouseControlActive.value ? MAX_SPEED * 0.7 : MAX_SPEED;
+    velocity.value.x = Math.max(Math.min(velocity.value.x, currentMaxSpeed), -currentMaxSpeed);
+    velocity.value.y = Math.max(Math.min(velocity.value.y, currentMaxSpeed), -currentMaxSpeed);
+    
+    // Apply velocity to position
+    position.value.x += velocity.value.x;
+    position.value.y += velocity.value.y;
+    
+    // Keep dot within boundaries
+    if (gameRef.value) {
+      const maxX = gameRef.value.clientWidth - DOT_SIZE;
+      const maxY = gameRef.value.clientHeight - DOT_SIZE;
       
-      // Normalize and apply force toward cursor, but more gently
-      acceleration.value.x += (dx / distance) * MOUSE_ACCEL_RATE * force;
-      acceleration.value.y += (dy / distance) * MOUSE_ACCEL_RATE * force;
-    }
-  }
-  
-  // Apply acceleration to velocity
-  velocity.value.x += acceleration.value.x;
-  velocity.value.y += acceleration.value.y;
-  
-  // Apply friction with stronger damping for mouse control
-  if (!keys.value.ArrowLeft && !keys.value.ArrowRight) {
-    // More damping when using mouse control for smoother stops
-    const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
-    velocity.value.x *= frictionFactor;
-  }
-  if (!keys.value.ArrowUp && !keys.value.ArrowDown) {
-    const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
-    velocity.value.y *= frictionFactor;
-  }
-  
-  // Limit maximum speed (slower for mouse control)
-  const currentMaxSpeed = isMouseControlActive.value ? MAX_SPEED * 0.7 : MAX_SPEED;
-  velocity.value.x = Math.max(Math.min(velocity.value.x, currentMaxSpeed), -currentMaxSpeed);
-  velocity.value.y = Math.max(Math.min(velocity.value.y, currentMaxSpeed), -currentMaxSpeed);
-  
-  // Apply velocity to position
-  position.value.x += velocity.value.x;
-  position.value.y += velocity.value.y;
-  
-  // Keep dot within boundaries
-  if (gameRef.value) {
-    const maxX = gameRef.value.clientWidth - DOT_SIZE;
-    const maxY = gameRef.value.clientHeight - DOT_SIZE;
-    
-    // Bounce if hitting wall
-    if (position.value.x < 0) {
-      position.value.x = 0;
-      velocity.value.x *= -0.5; // Bounce effect
-    } else if (position.value.x > maxX) {
-      position.value.x = maxX;
-      velocity.value.x *= -0.5; // Bounce effect
+      // Bounce if hitting wall
+      if (position.value.x < 0) {
+        position.value.x = 0;
+        velocity.value.x *= -0.5; // Bounce effect
+      } else if (position.value.x > maxX) {
+        position.value.x = maxX;
+        velocity.value.x *= -0.5; // Bounce effect
+      }
+      
+      if (position.value.y < 0) {
+        position.value.y = 0;
+        velocity.value.y *= -0.5; // Bounce effect
+      } else if (position.value.y > maxY) {
+        position.value.y = maxY;
+        velocity.value.y *= -0.5; // Bounce effect
+      }
     }
     
-    if (position.value.y < 0) {
-      position.value.y = 0;
-      velocity.value.y *= -0.5; // Bounce effect
-    } else if (position.value.y > maxY) {
-      position.value.y = maxY;
-      velocity.value.y *= -0.5; // Bounce effect
-    }
+    // Check for collisions with collectible dots
+    checkCollisions();
+    
+    // Update tail segment positions
+    updateTailSegments();
+    
+    // Check for color matches (may happen during movement too)
+    checkForColorMatches();
+    
+    // Continue animation if game is active
+    animationFrameId = requestAnimationFrame(updateGame);
   }
-  
-  // Check for collisions with collectible dots
-  checkCollisions();
-  
-  // Update tail segment positions
-  updateTailSegments();
-  
-  // Check for color matches (may happen during movement too)
-  checkForColorMatches();
-  
-  // Continue animation
-  animationFrameId = requestAnimationFrame(updateGame);
 };
 
 let animationFrameId;
@@ -653,6 +697,90 @@ const createExplosionEffect = (x, y, color, particleCount = 20) => {
   }, 500);
 };
 
+// Function to start the countdown - update to check high score when game ends
+const startCountdown = () => {
+  countdownInterval = setInterval(() => {
+    if (timeRemaining.value > 0) {
+      timeRemaining.value--;
+      
+      // Add pulse animation when time is getting low
+      if (timeRemaining.value <= 5) {
+        const timerDisplay = document.querySelector('.timer-value');
+        if (timerDisplay) {
+          timerDisplay.classList.add('pulse-timer');
+          setTimeout(() => {
+            timerDisplay.classList.remove('pulse-timer');
+          }, 500);
+        }
+      }
+    } else {
+      // Game over - stop countdown and animations
+      clearInterval(countdownInterval);
+      gameActive.value = false;
+      
+      // Check if we got a new high score
+      const isNewHighScore = checkHighScore();
+      
+      // Show game over message
+      const gameOverMsg = document.createElement('div');
+      gameOverMsg.className = 'game-over-message';
+      
+      // Customize message based on whether it's a new high score
+      let highScoreMessage = isNewHighScore 
+        ? `<h2 class="new-highscore">NEW HIGH SCORE!</h2>` 
+        : `<p class="highscore-info">High Score: ${highScore.value}</p>`;
+      
+      gameOverMsg.innerHTML = `
+        <h1>TIME'S UP!</h1>
+        <p>Final Score: ${score.value}</p>
+        ${highScoreMessage}
+        <button class="restart-button">Play Again</button>
+      `;
+      
+      gameRef.value.appendChild(gameOverMsg);
+      
+      // Add event listener to restart button
+      const restartButton = gameOverMsg.querySelector('.restart-button');
+      if (restartButton) {
+        restartButton.addEventListener('click', restartGame);
+      }
+    }
+  }, 1000);
+};
+
+// Function to restart the game
+const restartGame = () => {
+  // Reset game state
+  timeRemaining.value = 20;
+  score.value = 0;
+  tailSegments.value = [];
+  collectibleDots.value = [];
+  position.value = { x: gameRef.value.clientWidth / 2, y: gameRef.value.clientHeight / 2 };
+  velocity.value = { x: 0, y: 0 };
+  
+  // Remove game over message
+  const gameOverMsg = document.querySelector('.game-over-message');
+  if (gameOverMsg && gameOverMsg.parentNode) {
+    gameOverMsg.parentNode.removeChild(gameOverMsg);
+  }
+  
+  // Restart the game
+  gameActive.value = true;
+  startCountdown();
+  
+  // Spawn initial dots
+  for (let i = 0; i < 5; i++) {
+    spawnCollectibleDot();
+  }
+  
+  // IMPORTANT: Restart the animation frame loop!
+  animationFrameId = requestAnimationFrame(updateGame);
+  
+  // Reset history and reset focus on game container
+  positionHistory.value = [];
+  gameRef.value.focus();
+};
+
 onMounted(() => {
   // Center the dot
   if (gameRef.value) {
@@ -683,6 +811,12 @@ onMounted(() => {
       y: (gameRef.value.clientHeight) / 2
     };
   }
+  
+  // Start the countdown
+  startCountdown();
+  
+  // Load high score from localStorage
+  loadHighScore();
 });
 
 onUnmounted(() => {
@@ -699,6 +833,11 @@ onUnmounted(() => {
   // Clear mouse control timeout
   if (mouseControlTimeout) {
     clearTimeout(mouseControlTimeout);
+  }
+  
+  // Clear countdown interval
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
   }
 });
 </script>
@@ -978,5 +1117,135 @@ html, body {
     transform: translate(-50%, -50%) scale(1.5);
     opacity: 0;
   }
+}
+
+/* Timer styles */
+.timer-container {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+  padding-top: 8px;
+}
+
+.timer-value {
+  font-size: 36px;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.timer-label {
+  font-size: 12px;
+  letter-spacing: 2px;
+  opacity: 0.8;
+}
+
+.timer-low {
+  color: #FF5252;
+  text-shadow: 0 0 10px rgba(255, 82, 82, 0.7);
+}
+
+@keyframes pulse-timer {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.pulse-timer {
+  animation: pulse-timer 0.5s ease-in-out;
+}
+
+/* Game over screen */
+.game-over-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.8);
+  border: 3px solid #FF5252;
+  border-radius: 15px;
+  padding: 30px 50px;
+  text-align: center;
+  color: white;
+  font-family: 'Arial', sans-serif;
+  z-index: 1000;
+  box-shadow: 0 0 30px rgba(255, 82, 82, 0.5);
+}
+
+.game-over-message h1 {
+  font-size: 48px;
+  margin: 0 0 20px 0;
+  color: #FF5252;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.game-over-message p {
+  font-size: 24px;
+  margin: 20px 0;
+}
+
+.restart-button {
+  background-color: #FF5252;
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 18px;
+  border-radius: 30px;
+  cursor: pointer;
+  margin-top: 20px;
+  transition: all 0.2s ease;
+  font-weight: bold;
+}
+
+.restart-button:hover {
+  background-color: #FF7070;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(255, 82, 82, 0.7);
+}
+
+/* High score styles */
+.highscore-container {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+  padding: 8px 0;
+}
+
+.highscore-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: gold;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+}
+
+.highscore-label {
+  font-size: 12px;
+  letter-spacing: 2px;
+  opacity: 0.8;
+}
+
+/* New high score animation in game over screen */
+.new-highscore {
+  color: gold;
+  font-size: 32px;
+  margin: 15px 0;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+  animation: pulse-highscore 1.5s infinite alternate;
+}
+
+@keyframes pulse-highscore {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.1); opacity: 1; }
+}
+
+.highscore-info {
+  font-size: 20px;
+  color: #aaa;
+  margin: 10px 0;
 }
 </style>
