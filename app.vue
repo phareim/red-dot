@@ -1,6 +1,7 @@
 <template>
   <div 
     class="game-container" 
+    :class="{ 'game-active': gameActive }"
     @keydown="handleKeyDown" 
     @keyup="handleKeyUp" 
     @mousemove="handleMouseMove"
@@ -850,12 +851,17 @@ html, body {
 }
 
 .game-container {
-  background-color: black;
+  position: relative;
   width: 100vw;
   height: 100vh;
-  position: relative;
-  outline: none;
-  cursor: none; /* Hide the cursor for a cleaner experience */
+  background-color: #222;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Only hide cursor when game is actively running */
+.game-active {
+  cursor: none;
 }
 
 .red-dot {
