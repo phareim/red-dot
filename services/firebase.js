@@ -1,46 +1,104 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { 
+  getFirestore, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  collection, 
+  query, 
+  orderBy, 
+  limit, 
+  getDocs,
+  enableNetwork,
+  disableNetwork,
+  connectFirestoreEmulator
+} from "firebase/firestore";
 
-// Firebase configuration from environment variables
+// ONLY FOR TESTING - Replace with your actual Firebase config
 const firebaseConfig = {
-  apiKey: process.env.NUXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NUXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NUXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NUXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NUXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NUXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NUXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+  apiKey: "YOUR_API_KEY", 
+  authDomain: "a-red-dot.firebaseapp.com",
+  projectId: "a-red-dot",
+  storageBucket: "a-red-dot.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+console.log("Firebase initialized with projectId:", firebaseConfig.projectId);
+
+// Explicitly enable network
+export async function forceEnableNetwork() {
+  try {
+    await enableNetwork(db);
+    console.log("Firestore network connection enabled");
+    return true;
+  } catch (error) {
+    console.error("Error enabling Firestore network:", error);
+    return false;
+  }
+}
+
+// Check if running in dev mode with emulator
+if (process.env.NODE_ENV === 'development' && process.env.NUXT_PUBLIC_USE_FIREBASE_EMULATOR) {
+  connectFirestoreEmulator(db, 'localhost', 8080);
+  console.log('Connected to Firestore emulator on localhost:8080');
+}
+
+// Add a function to test network connectivity
+export async function testFirestoreConnection() {
+  try {
+    // Try to get a small document to test connection
+    await getDoc(doc(db, "test", "connectivity-test"));
+    console.log("✅ Firestore connection test successful!");
+    return true;
+  } catch (error) {
+    if (error.code === 'failed-precondition' && error.message.includes('offline')) {
+      console.error("❌ Firestore is offline. Attempting to reconnect...");
+      await forceEnableNetwork();
+      return false;
+    }
+    console.error("❌ Firestore connection test failed:", error);
+    return false;
+  }
+}
 
 // Function to save high score to Firestore (individual player record)
 export async function saveHighScore(playerName, score, playerId) {
   try {
+    console.log("Attempting to save high score to Firebase:", { playerName, score, playerId });
     const playerDocRef = doc(db, "highscores", playerId);
     
     // Check if the player already exists
     const playerDoc = await getDoc(playerDocRef);
+    console.log("Existing player document:", playerDoc.exists() ? "exists" : "does not exist");
     
     if (playerDoc.exists()) {
       const currentData = playerDoc.data();
+      console.log("Current player data:", currentData);
+      
       // Only update if the new score is higher
       if (score > (currentData.score || 0)) {
+        console.log("New score is higher, updating...");
         await updateDoc(playerDocRef, {
           name: playerName,
           score: score,
           updatedAt: new Date()
         });
+        console.log("Player document updated successfully");
         
         // Also update the leaderboard
         await updateLeaderboard(playerName, score, playerId);
         return true;
       }
+      console.log("New score is not higher, no update needed");
       return false;
     } else {
+      console.log("Player does not exist, creating new document");
       // Create a new player record
       await setDoc(playerDocRef, {
         name: playerName,
@@ -48,6 +106,7 @@ export async function saveHighScore(playerName, score, playerId) {
         createdAt: new Date(),
         updatedAt: new Date()
       });
+      console.log("New player document created successfully");
       
       // Also update the leaderboard
       await updateLeaderboard(playerName, score, playerId);

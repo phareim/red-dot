@@ -69,9 +69,13 @@ import {
   saveHighScore as saveHighScoreToFirebase, 
   getPlayerHighScore, 
   getTopHighScores, 
-  initializeLeaderboardFromExistingData 
+  initializeLeaderboardFromExistingData,
+  forceEnableNetwork,
+  testFirestoreConnection
 } from '@/services/firebase';
 import { v4 as uuidv4 } from 'uuid';
+import { doc, setDoc } from 'firebase/firestore';
+import { getFirestore } from "firebase/firestore";
 
 // Physics variables
 const position = ref({ x: 0, y: 0 });
@@ -141,6 +145,9 @@ const playerName = ref('');
 
 // Add player ID variable for Firebase
 const playerId = ref('');
+
+// Import the database directly
+const db = getFirestore();
 
 // Load high score from localStorage
 const loadHighScore = () => {
@@ -854,26 +861,37 @@ const checkHighScore = async () => {
 
 // Update handleNameSubmit to also save to Firebase
 const handleNameSubmit = async (name, dialog) => {
-  const trimmedName = name.trim();
-  const finalName = trimmedName || 'Player'; // Default to "Player" if empty
-  
-  // Save the player name
-  savePlayerName(finalName);
-  
-  // Save high score to Firebase
-  if (score.value > 0) {
-    try {
-      await saveHighScoreToFirebase(finalName, score.value, playerId.value);
-    } catch (error) {
-      console.error("Error saving to Firebase after name submission:", error);
+  try {
+    const trimmedName = name.trim();
+    const finalName = trimmedName || 'Player'; // Default to "Player" if empty
+    
+    // Save the player name
+    savePlayerName(finalName);
+    playerName.value = finalName;
+    
+    console.log("Saving to Firebase with:", {
+      name: finalName,
+      score: score.value,
+      playerId: playerId.value
+    });
+    
+    // Save high score to Firebase
+    if (score.value > 0) {
+      const result = await saveHighScoreToFirebase(finalName, score.value, playerId.value);
+      console.log("Firebase save result:", result);
     }
+    
+    // Remove the dialog
+    if (gameRef.value.contains(dialog)) {
+      gameRef.value.removeChild(dialog);
+    }
+    
+    // Show the game over screen
+    const isNewHighScore = await checkHighScore();
+    showGameOverScreen(isNewHighScore);
+  } catch (error) {
+    console.error("Error in handleNameSubmit:", error);
   }
-  
-  // Remove the dialog
-  gameRef.value.removeChild(dialog);
-  
-  // Show the game over screen
-  showGameOverScreen(score.value >= highScore.value);
 };
 
 // Function to show the game over screen (moved from countdown)
@@ -999,7 +1017,7 @@ const restartGame = () => {
   gameRef.value.focus();
 };
 
-onMounted(() => {
+onMounted(async () => {
   // Center the dot
   if (gameRef.value) {
     position.value = {
@@ -1038,12 +1056,21 @@ onMounted(() => {
   loadPlayerName();
   loadOrGeneratePlayerId();
   
+  // Test Firestore connection and force enable network
+  await forceEnableNetwork();
+  const isConnected = await testFirestoreConnection();
+  console.log("Firestore connection status:", isConnected ? "Online" : "Offline");
+  
   // Sync with Firebase after a short delay to ensure we have loaded local data
   setTimeout(async () => {
     await syncHighScore();
     
-    // Initialize the leaderboard if needed (only runs once)
-    await initializeLeaderboardFromExistingData();
+    // Only initialize the leaderboard if we're online
+    if (await testFirestoreConnection()) {
+      await initializeLeaderboardFromExistingData();
+    } else {
+      console.warn("Skipping leaderboard initialization - device is offline");
+    }
   }, 1000);
 });
 
@@ -1068,6 +1095,23 @@ onUnmounted(() => {
     clearInterval(countdownInterval);
   }
 });
+
+// Add a simple test function
+const testFirebaseWrite = async () => {
+  try {
+    await forceEnableNetwork(); // Make sure network is enabled
+    
+    const testRef = doc(db, "test", "test-" + new Date().getTime());
+    await setDoc(testRef, { 
+      test: true, 
+      timestamp: new Date(),
+      message: "Test document from game"
+    });
+    console.log("✅ TEST DOCUMENT WRITTEN SUCCESSFULLY");
+  } catch (error) {
+    console.error("❌ ERROR WRITING TEST DOCUMENT:", error);
+  }
+};
 </script>
 
 <style>
