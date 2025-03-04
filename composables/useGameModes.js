@@ -30,7 +30,7 @@ export function useGameModes() {
       displayTimer: false,
       displayHighScore: false,
       endless: true,
-      saveHighScore: true,
+      saveHighScore: false, // Never save endless mode scores to high score list
     }
   });
   

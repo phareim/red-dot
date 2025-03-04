@@ -313,7 +313,23 @@ const handleGameOver = async () => {
  */
 const endEndlessMode = () => {
   if (isEndlessMode.value && gameActive.value) {
-    forceGameOver(handleGameOver);
+    // Clear any active animation frame
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    
+    // Reset game state but don't trigger game over screen
+    resetGame();
+    
+    // Go directly back to mode selection
+    gameActive.value = false;
+    
+    // Focus the mode selector for keyboard navigation
+    setTimeout(() => {
+      const modeSelector = document.querySelector('.mode-selector');
+      if (modeSelector) modeSelector.focus();
+    }, 100);
   }
 };
 
