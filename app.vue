@@ -270,8 +270,13 @@ const handleGameOver = async () => {
       await saveHighScoreToFirebase(playerName.value, score.value, playerId.value);
     }
     
-    // Go to mode selection screen instead of immediately restarting
+    // Make sure game is not active so mode selection will be visible
     gameActive.value = false;
+    
+    // Force focus on the mode selector to ensure proper keyboard navigation
+    setTimeout(() => {
+      modeSelectorRef.value?.focus();
+    }, 100);
   } catch (error) {
     console.error("Error handling game over:", error);
   }
@@ -840,14 +845,14 @@ html, body {
   left: 50%;
   transform: translate(-50%, -50%);
   background-color: rgba(0, 0, 0, 0.8);
-  border: 3px solid #FF5252;
+  border: 3px solid #2196F3;
   border-radius: 15px;
   padding: 30px 50px;
   text-align: center;
   color: white;
   font-family: 'Arial', sans-serif;
   z-index: 1000;
-  box-shadow: 0 0 30px rgba(255, 82, 82, 0.5);
+  box-shadow: 0 0 30px rgba(33, 150, 243, 0.5);
   min-width: 450px;
   max-width: 80%;
 }
@@ -855,7 +860,7 @@ html, body {
 .game-over-message h1 {
   font-size: 48px;
   margin: 0 0 20px 0;
-  color: #FF5252;
+  color: #2196F3;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
 }
 
@@ -865,7 +870,7 @@ html, body {
 }
 
 .restart-button {
-  background-color: #FF5252;
+  background-color: #2196F3;
   color: white;
   border: none;
   padding: 12px 30px;
@@ -878,9 +883,9 @@ html, body {
 }
 
 .restart-button:hover {
-  background-color: #FF7070;
+  background-color: #64B5F6;
   transform: scale(1.05);
-  box-shadow: 0 0 15px rgba(255, 82, 82, 0.7);
+  box-shadow: 0 0 15px rgba(33, 150, 243, 0.7);
 }
 
 /* Player name styles */
