@@ -72,6 +72,7 @@ export function useGameState() {
    */
   const addPoints = (points) => {
     score.value += points;
+    console.log('Adding points:', points, 'Score:', score.value);
   };
 
   /**

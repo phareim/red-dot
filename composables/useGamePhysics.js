@@ -29,7 +29,7 @@ export function useGamePhysics(gameRef) {
 
   // Position history for tail segments
   const positionHistory = ref([]);
-  const MAX_HISTORY = 300; // Store more positions than we need for smooth following
+  const MAX_HISTORY = 5000; // Store more positions than we need for smooth following
 
   /**
    * Handle keyboard key down events

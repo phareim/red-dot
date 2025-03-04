@@ -9,9 +9,9 @@ export function useGameEntities(gameRef, position, positionHistory, DOT_SIZE) {
   const collectibleDots = ref([]);
 
   // Constants for collectible dots
-  const SPAWN_INTERVAL = 2000; // New dot every 2 seconds
-  const MAX_COLLECTIBLE_DOTS = 10; // Maximum dots on screen
-  const FAST_SPAWN_INTERVAL = 500; // Spawn every 0.5 seconds when fewer dots
+  const SPAWN_INTERVAL = 200; // New dot every 2 seconds
+  const MAX_COLLECTIBLE_DOTS = 20; // Maximum dots on screen
+  const FAST_SPAWN_INTERVAL = 50; // Spawn every 0.5 seconds when fewer dots
   let currentSpawnInterval = SPAWN_INTERVAL;
   let spawnIntervalId = null;
 
