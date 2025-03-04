@@ -2,7 +2,7 @@
   <div 
     class="game-container" 
     :class="{ 'game-active': gameActive }"
-    @keydown="handleKeyDown" 
+    @keydown="handleGameKeyDown" 
     @keyup="handleKeyUp" 
     @mousemove="handleMouseMove"
     @mousedown="isMouseControlActive = true"
@@ -10,21 +10,24 @@
     ref="gameRef"
   >
     <!-- Mode selection (shown when game is not active) -->
-    <div v-if="!gameActive" class="mode-selector">
+    <div v-if="!gameActive" class="mode-selector" @keydown="handleModeKeyDown" tabindex="0" ref="modeSelectorRef">
       <h2>Choose Game Mode</h2>
       <div class="mode-buttons">
         <button 
-          v-for="mode in availableModes" 
+          v-for="(mode, index) in availableModes" 
           :key="mode.id"
           class="mode-button"
-          :class="{ 'selected': currentMode === mode.id }"
-          @click="selectGameMode(mode.id)"
+          :class="{ 
+            'selected': currentMode === mode.id,
+            'focused': selectedModeIndex === index 
+          }"
+          @click="selectAndStartMode(mode.id)"
+          ref="modeButtonsRef"
         >
           <div class="mode-name">{{ mode.name }}</div>
           <div class="mode-description">{{ mode.description }}</div>
         </button>
       </div>
-      <button class="start-game-button" @click="startSelectedMode">Start Game</button>
     </div>
     
     <!-- Score display for Standard Mode -->
@@ -161,6 +164,11 @@ const availableModes = computed(() => getAvailableModes());
 // Animation frame ID for game loop
 let animationFrameId;
 
+// Mode selection keyboard navigation
+const modeSelectorRef = ref(null);
+const modeButtonsRef = ref([]);
+const selectedModeIndex = ref(0);
+
 /**
  * Main game update function - called every animation frame
  */
@@ -279,10 +287,59 @@ const endEndlessMode = () => {
 };
 
 /**
- * Select a game mode
+ * Handle keyboard navigation in mode selection screen
  */
-const selectGameMode = (modeId) => {
+const handleModeKeyDown = (event) => {
+  if (!gameActive.value) {
+    switch(event.key) {
+      case 'ArrowUp':
+        event.preventDefault();
+        selectedModeIndex.value = Math.max(0, selectedModeIndex.value - 1);
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        selectedModeIndex.value = Math.min(availableModes.value.length - 1, selectedModeIndex.value + 1);
+        break;
+      case 'Enter':
+        event.preventDefault();
+        if (availableModes.value.length > 0) {
+          selectAndStartMode(availableModes.value[selectedModeIndex.value].id);
+        }
+        break;
+    }
+  }
+};
+
+/**
+ * Handle game keydown events including Escape to return to menu
+ */
+const handleGameKeyDown = (event) => {
+  // Original physics key handling
+  handleKeyDown(event);
+  
+  // Add escape key to quit game - go directly back to mode selection
+  if (event.key === 'Escape' && gameActive.value) {
+    event.preventDefault();
+    // Cancel any active countdowns and reset game state
+    resetGame();
+    // Skip game over screen, go directly back to mode selection
+    gameActive.value = false;
+    // Focus the mode selector for keyboard navigation
+    setTimeout(() => {
+      modeSelectorRef.value?.focus();
+    }, 100);
+  }
+};
+
+/**
+ * Select a game mode and start it immediately
+ */
+const selectAndStartMode = (modeId) => {
+  // Set the mode
   setMode(modeId);
+  
+  // Start the game with this mode
+  startSelectedMode();
 };
 
 /**
@@ -323,6 +380,11 @@ onMounted(() => {
   
   // Don't automatically start the game - show mode selection instead
   gameActive.value = false;
+  
+  // Focus the mode selector for keyboard navigation
+  setTimeout(() => {
+    modeSelectorRef.value?.focus();
+  }, 100);
   
   // Load high score, player name and ID from localStorage
   loadHighScore();
@@ -496,6 +558,11 @@ html, body {
   box-shadow: 0 0 15px rgba(33, 150, 243, 0.5);
 }
 
+.mode-button.focused {
+  border-color: #64B5F6;
+  box-shadow: 0 0 15px rgba(100, 181, 246, 0.7);
+}
+
 .mode-name {
   font-size: 22px;
   font-weight: bold;
@@ -508,22 +575,9 @@ html, body {
   color: #BBB;
 }
 
-.start-game-button {
-  background-color: #2196F3;
-  color: white;
-  border: none;
-  padding: 12px 30px;
-  font-size: 18px;
-  border-radius: 30px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-weight: bold;
-}
-
-.start-game-button:hover {
-  background-color: #42A5F5;
-  transform: scale(1.05);
-  box-shadow: 0 0 15px rgba(33, 150, 243, 0.7);
+/* Style for mode selector focus outline */
+.mode-selector:focus {
+  outline: none;
 }
 
 /* Score display styles */
