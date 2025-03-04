@@ -423,16 +423,77 @@ html, body {
   z-index: 200;
 }
 
-.score-value {
-  font-size: 42px;
+.score-value, .highscore-value, .timer-value {
+  font-size: 36px;
   font-weight: bold;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+  margin: 0;
 }
 
-.score-label {
+.score-label, .highscore-label, .timer-label {
   font-size: 14px;
   letter-spacing: 2px;
   opacity: 0.8;
+  margin-top: 2px;
+}
+
+.score-value {
+  color: white;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+}
+
+.highscore-value {
+  color: gold;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+}
+
+/* High score styles */
+.highscore-container, .timer-container {
+  width: 100%;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+  padding-top: 10px;
+}
+
+.timer-value {
+  color: #ffffff;
+}
+
+.timer-low {
+  color: #FF5252;
+  text-shadow: 0 0 10px rgba(255, 82, 82, 0.7);
+}
+
+@keyframes pulse-timer {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.pulse-timer {
+  animation: pulse-timer 0.5s ease-in-out;
+}
+
+/* New high score animation in game over screen */
+.new-highscore {
+  color: gold;
+  font-size: 32px;
+  margin: 15px 0;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+  animation: pulse-highscore 1.5s infinite alternate;
+}
+
+@keyframes pulse-highscore {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.1); opacity: 1; }
+}
+
+.highscore-info {
+  font-size: 20px;
+  color: #aaa;
+  margin: 10px 0;
 }
 
 /* Score popup animation */
@@ -578,43 +639,6 @@ html, body {
   }
 }
 
-/* Timer styles */
-.timer-container {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border-top: 2px solid rgba(255, 255, 255, 0.3);
-  padding-top: 8px;
-}
-
-.timer-value {
-  font-size: 36px;
-  font-weight: bold;
-  color: #ffffff;
-}
-
-.timer-label {
-  font-size: 12px;
-  letter-spacing: 2px;
-  opacity: 0.8;
-}
-
-.timer-low {
-  color: #FF5252;
-  text-shadow: 0 0 10px rgba(255, 82, 82, 0.7);
-}
-
-@keyframes pulse-timer {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.2); }
-  100% { transform: scale(1); }
-}
-
-.pulse-timer {
-  animation: pulse-timer 0.5s ease-in-out;
-}
-
 /* Game over screen */
 .game-over-message {
   position: absolute;
@@ -665,51 +689,6 @@ html, body {
   box-shadow: 0 0 15px rgba(255, 82, 82, 0.7);
 }
 
-/* High score styles */
-.highscore-container {
-  margin-top: 8px;
-  margin-bottom: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border-top: 2px solid rgba(255, 255, 255, 0.3);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
-  padding: 8px 0;
-}
-
-.highscore-value {
-  font-size: 28px;
-  font-weight: bold;
-  color: gold;
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
-}
-
-.highscore-label {
-  font-size: 12px;
-  letter-spacing: 2px;
-  opacity: 0.8;
-}
-
-/* New high score animation in game over screen */
-.new-highscore {
-  color: gold;
-  font-size: 32px;
-  margin: 15px 0;
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
-  animation: pulse-highscore 1.5s infinite alternate;
-}
-
-@keyframes pulse-highscore {
-  0% { transform: scale(1); opacity: 0.8; }
-  100% { transform: scale(1.1); opacity: 1; }
-}
-
-.highscore-info {
-  font-size: 20px;
-  color: #aaa;
-  margin: 10px 0;
-}
-
 /* Player name styles */
 .player-name {
   font-size: 14px;
@@ -718,8 +697,9 @@ html, body {
   font-style: italic;
   display: inline-block;
   background: rgba(0, 0, 0, 0.3);
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 12px;
+  text-align: center;
 }
 
 /* Player info section in game over screen */
