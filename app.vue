@@ -115,6 +115,11 @@ import { useGameModes } from '~/composables/useGameModes';
 // Setup game container ref
 const gameRef = ref(null);
 
+// Function to fetch top scores
+const fetchTopScores = async (limit) => {
+  return await getTopHighScores(limit);
+};
+
 // Use our game physics composable
 const { 
   position, velocity, positionHistory, keys, isMouseControlActive,
@@ -163,6 +168,12 @@ const availableModes = computed(() => getAvailableModes());
 
 // Animation frame ID for game loop
 let animationFrameId;
+
+// Timeout ID for game loop
+const gameLoopTimeout = ref(null);
+
+// Track game over state
+const isGameOver = ref(false);
 
 // Mode selection keyboard navigation
 const modeSelectorRef = ref(null);
@@ -237,49 +248,57 @@ const syncHighScore = async () => {
 };
 
 /**
- * Handle game over - called when time runs out or endless mode is ended
+ * Handle game over and score checking
  */
 const handleGameOver = async () => {
-  try {
-    // Check if it's a new high score (only for standard mode)
-    const isNewHighScore = await checkHighScore((name, score, id) => 
+  // Clear any active animation frame
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+  
+  // Game is officially over
+  isGameOver.value = true;
+  
+  // Log the score
+  console.log(`Final score: ${score.value}`);
+  
+  let isNewHighScore = false;
+  
+  // Only check for high scores if this mode saves high scores
+  if (currentModeConfig.value.saveHighScore) {
+    // Check if this is a high score
+    isNewHighScore = await checkHighScore((name, score, id) => 
       saveHighScoreToFirebase(name, score, id)
     );
-    
-    // If no player name set, show name input dialog
-    if (!playerName.value) {
-      const name = await showNameInputDialog(isNewHighScore);
-      savePlayerName(name);
-      
-      // Save score to Firebase with new name
-      if (score.value > 0) {
-        await saveHighScoreToFirebase(name, score.value, playerId.value);
-      }
-    }
-    
-    // Show game over screen
-    const result = await showGameOverScreen(isNewHighScore, getTopHighScores);
-    
-    // If player changed their name, update it in Firebase
-    if (result && result.nameChanged && playerName.value) {
-      await updatePlayerName(playerName.value, playerId.value);
-    }
-    
-    // Re-sync with Firebase in case player name was changed on game over screen
-    if (playerName.value && score.value > 0 && currentModeConfig.value.saveHighScore) {
-      await saveHighScoreToFirebase(playerName.value, score.value, playerId.value);
-    }
-    
-    // Make sure game is not active so mode selection will be visible
-    gameActive.value = false;
-    
-    // Force focus on the mode selector to ensure proper keyboard navigation
-    setTimeout(() => {
-      modeSelectorRef.value?.focus();
-    }, 100);
-  } catch (error) {
-    console.error("Error handling game over:", error);
   }
+  
+  // Show game over screen
+  const result = await showGameOverScreen({
+    score: score.value,
+    isNewHighScore,
+    getTopScores: currentModeConfig.value.saveHighScore ? fetchTopScores : null
+  });
+  
+  // If player changed their name on game over screen
+  if (result?.nameChanged) {
+    // Update local storage directly since the name is already stored in the playerName ref
+    localStorage.setItem('snakeGamePlayerName', playerName.value);
+  }
+  
+  // Re-sync with Firebase in case player name was changed on game over screen
+  if (playerName.value && score.value > 0 && currentModeConfig.value.saveHighScore) {
+    await saveHighScoreToFirebase(playerName.value, score.value, playerId.value);
+  }
+  
+  // Set gameActive to false to return to mode selection
+  gameActive.value = false;
+  
+  // Focus the mode selector for keyboard navigation
+  setTimeout(() => {
+    const modeSelector = document.querySelector('.mode-selector');
+    if (modeSelector) modeSelector.focus();
+  }, 100);
 };
 
 /**

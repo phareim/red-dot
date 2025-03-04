@@ -144,7 +144,7 @@ export function useGameUI(gameRef, score, highScore, playerName, savePlayerName)
    * Returns a Promise that resolves when the user clicks "Play Again"
    * @returns {Promise<{nameChanged: boolean}>} A promise with information about name changes
    */
-  const showGameOverScreen = async (isNewHighScore, getTopScores) => {
+  const showGameOverScreen = async ({ score, isNewHighScore, getTopScores }) => {
     return new Promise((resolve) => {
       // Track if the player name was changed
       let nameChanged = false;
@@ -153,10 +153,19 @@ export function useGameUI(gameRef, score, highScore, playerName, savePlayerName)
       const gameOverMsg = document.createElement('div');
       gameOverMsg.className = 'game-over-message';
       
-      // Customize message based on whether it's a new high score
-      let highScoreMessage = isNewHighScore 
-        ? `<h2 class="new-highscore">NEW HIGH SCORE!</h2>` 
-        : `<p class="highscore-info">High Score: ${highScore.value} ${playerName.value ? `(${playerName.value})` : ""}</p>`;
+      // Determine if we should show high scores section
+      // isNewHighScore will be false for modes that don't save scores
+      const showHighScoresSection = isNewHighScore !== false || highScore.value > 0;
+      
+      // Set appropriate game over header
+      const gameOverHeader = showHighScoresSection 
+        ? (isNewHighScore ? `<h2 class="new-highscore">NEW HIGH SCORE!</h2>` : `<h2>GAME OVER</h2>`) 
+        : `<h2>ZEN MODE COMPLETE</h2>`;
+      
+      // High score message if showing high scores
+      let highScoreMessage = showHighScoresSection
+        ? `<p class="highscore-info">High Score: ${highScore.value} ${playerName.value ? `(${playerName.value})` : ""}</p>`
+        : '';
       
       // Player info display with option to change name
       const playerInfoSection = playerName.value ? 
@@ -165,17 +174,16 @@ export function useGameUI(gameRef, score, highScore, playerName, savePlayerName)
           <button class="change-name-button">Change Name</button></p>
          </div>` : '';
       
-      // Initially create the layout with a loading indicator for high scores
+      // Build the game over message HTML
       gameOverMsg.innerHTML = `
-        <h1>TIME'S UP!</h1>
-        <p>Final Score: ${score.value}</p>
+        ${gameOverHeader}
+        <p class="final-score">Your Score: ${score}</p>
+        ${showHighScoresSection ? highScoreMessage : ''}
         ${playerInfoSection}
-        ${highScoreMessage}
-        <div class="global-highscores">
-          <h3>Global Top Scores</h3>
-          <div class="loading-scores">Loading scores...</div>
+        <div class="game-over-actions">
+          <button class="restart-button">Play Again</button>
         </div>
-        <button class="restart-button">Play Again</button>
+        ${showHighScoresSection ? `<div class="global-highscores">Loading top scores...</div>` : ''}
       `;
       
       gameRef.value.appendChild(gameOverMsg);
@@ -221,10 +229,11 @@ export function useGameUI(gameRef, score, highScore, playerName, savePlayerName)
         resolve({ nameChanged });
       });
       
-      // Fetch and display top scores if function is provided
-      if (getTopScores) {
+      // Fetch and display top scores if function is provided and high scores section is shown
+      if (getTopScores && showHighScoresSection) {
         getTopScores(10).then((topScores) => {
           const highscoresContainer = gameOverMsg.querySelector('.global-highscores');
+          if (!highscoresContainer) return; // Safety check
           
           if (topScores && topScores.length > 0) {
             let highscoresHTML = `
