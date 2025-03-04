@@ -222,11 +222,23 @@ export function useGameUI(gameRef, score, highScore, playerName, savePlayerName)
       restartButton.addEventListener('click', () => {
         // Remove the game over message
         if (gameRef.value.contains(gameOverMsg)) {
-          gameRef.value.removeChild(gameOverMsg);
+          // Add a transition for smoother removal
+          gameOverMsg.style.opacity = '0';
+          gameOverMsg.style.transition = 'opacity 0.15s ease-out';
+          
+          // Wait for the transition to complete before removing from DOM and resolving
+          setTimeout(() => {
+            if (gameRef.value.contains(gameOverMsg)) {
+              gameRef.value.removeChild(gameOverMsg);
+            }
+            
+            // Resolve the promise with info about name changes
+            resolve({ nameChanged });
+          }, 150);
+        } else {
+          // Fallback in case the element is somehow already removed
+          resolve({ nameChanged });
         }
-        
-        // Resolve the promise with info about name changes
-        resolve({ nameChanged });
       });
       
       // Fetch and display top scores if function is provided and high scores section is shown

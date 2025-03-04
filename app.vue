@@ -294,15 +294,18 @@ const handleGameOver = async () => {
     await saveHighScoreToFirebase(playerName.value, score.value, playerId.value);
   }
   
-  // Set gameActive to false to return to mode selection
-  // This is now done only after player clicks "Play Again" on the game over screen
-  gameActive.value = false;
-  
-  // Focus the mode selector for keyboard navigation
+  // Add a small delay to ensure the game over modal is fully removed
+  // before showing the mode selector
   setTimeout(() => {
-    const modeSelector = document.querySelector('.mode-selector');
-    if (modeSelector) modeSelector.focus();
-  }, 100);
+    // Set gameActive to false to return to mode selection
+    gameActive.value = false;
+    
+    // Focus the mode selector for keyboard navigation
+    setTimeout(() => {
+      const modeSelector = document.querySelector('.mode-selector');
+      if (modeSelector) modeSelector.focus();
+    }, 50);
+  }, 150);
 };
 
 /**

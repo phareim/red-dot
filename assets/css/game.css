@@ -423,7 +423,7 @@ html, body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: rgba(0, 0, 0, 1);
   border: 3px solid #2196F3;
   border-radius: 15px;
   padding: 30px 50px;
@@ -434,6 +434,8 @@ html, body {
   box-shadow: 0 0 30px rgba(33, 150, 243, 0.5);
   min-width: 450px;
   max-width: 80%;
+  opacity: 1;
+  transition: opacity 0.15s ease-in;
 }
 
 .game-over-message h1 {
