@@ -58,7 +58,6 @@
     ></div>
     
     <div class="instructions" alt="Use the arrow keys to move the red dot around the screen.">
-      Collect the colorful dots to grow your tail!
     </div>
   </div>
 </template>
