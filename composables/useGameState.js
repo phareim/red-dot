@@ -15,6 +15,9 @@ export function useGameState() {
   const playerName = ref('');
   const playerId = ref('');
   
+  // Game mode related properties
+  const isEndlessMode = ref(false);
+  
   /**
    * Load high score from localStorage
    */
@@ -53,79 +56,15 @@ export function useGameState() {
   /**
    * Load or generate player ID
    */
-  const loadOrGeneratePlayerId = (generateUUID) => {
-    const savedPlayerId = localStorage.getItem('snakeGamePlayerId');
-    if (savedPlayerId) {
-      playerId.value = savedPlayerId;
+  const loadOrGeneratePlayerId = (uuidGenerator) => {
+    const savedId = localStorage.getItem('snakeGamePlayerId');
+    if (savedId) {
+      playerId.value = savedId;
     } else {
-      // Generate a new UUID for the player using the provided function
-      playerId.value = generateUUID();
+      // Generate new ID
+      playerId.value = uuidGenerator();
       localStorage.setItem('snakeGamePlayerId', playerId.value);
     }
-  };
-
-  /**
-   * Check if the current score is a new high score
-   * Returns a Promise resolving to boolean
-   */
-  const checkHighScore = async (saveToFirebase) => {
-    const isNewHighScore = score.value > highScore.value;
-    
-    if (isNewHighScore) {
-      highScore.value = score.value;
-      saveHighScore();
-      
-      // Also save to Firebase if we have a player name and the function is provided
-      if (playerName.value && saveToFirebase) {
-        try {
-          await saveToFirebase(playerName.value, score.value, playerId.value);
-        } catch (error) {
-          console.error("Error saving high score to Firebase:", error);
-        }
-      }
-    }
-    
-    return isNewHighScore;
-  };
-
-  /**
-   * Start the game countdown timer
-   */
-  const startCountdown = (onTimeUp) => {
-    // Clear any existing interval
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-    }
-    
-    // Reset the time
-    timeRemaining.value = 20;
-    gameActive.value = true;
-    
-    countdownInterval = setInterval(() => {
-      if (timeRemaining.value > 0) {
-        timeRemaining.value--;
-        
-        // Add pulse animation when time is getting low
-        if (timeRemaining.value <= 5) {
-          const timerDisplay = document.querySelector('.timer-value');
-          if (timerDisplay) {
-            timerDisplay.classList.add('pulse-timer');
-            setTimeout(() => {
-              timerDisplay.classList.remove('pulse-timer');
-            }, 500);
-          }
-        }
-      } else {
-        // Game over - stop countdown
-        clearInterval(countdownInterval);
-        gameActive.value = false;
-        
-        // Call the provided callback if present
-        if (onTimeUp) {
-          onTimeUp();
-        }
-      }
-    }, 1000);
   };
 
   /**
@@ -136,23 +75,111 @@ export function useGameState() {
   };
 
   /**
-   * Reset the game state for a new game
+   * Check if current score is a new high score
    */
-  const resetGame = () => {
-    score.value = 0;
-    gameActive.value = true;
-    timeRemaining.value = 20;
+  const checkHighScore = async (saveToCloud) => {
+    // If new high score, save it
+    if (score.value > highScore.value) {
+      highScore.value = score.value;
+      saveHighScore();
+      
+      // Save to cloud if callback provided
+      if (saveToCloud && playerName.value) {
+        await saveToCloud(playerName.value, highScore.value, playerId.value);
+      }
+      return true;
+    }
+    return false;
   };
 
   /**
-   * Clean up timers and intervals
+   * Start the countdown timer based on game mode configuration
+   */
+  const startCountdown = (onTimeUp, modeConfig = null) => {
+    // Clear any existing interval
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+    }
+    
+    // Apply game mode settings
+    if (modeConfig) {
+      isEndlessMode.value = modeConfig.endless;
+      
+      // Set time based on mode config
+      if (modeConfig.timeLimit > 0) {
+        timeRemaining.value = modeConfig.timeLimit;
+      } else {
+        // For endless mode, just set a very high number
+        timeRemaining.value = 999999;
+      }
+    } else {
+      // Default to standard mode
+      timeRemaining.value = 20;
+      isEndlessMode.value = false;
+    }
+    
+    gameActive.value = true;
+    
+    // If not endless mode, start the countdown
+    if (!isEndlessMode.value) {
+      countdownInterval = setInterval(() => {
+        if (timeRemaining.value > 0) {
+          timeRemaining.value--;
+          
+          // Add pulse animation when time is getting low
+          if (timeRemaining.value <= 5) {
+            const timerDisplay = document.querySelector('.timer-value');
+            if (timerDisplay) {
+              timerDisplay.classList.add('pulse-timer');
+              setTimeout(() => {
+                timerDisplay.classList.remove('pulse-timer');
+              }, 500);
+            }
+          }
+        } else {
+          // Game over - stop countdown
+          clearInterval(countdownInterval);
+          gameActive.value = false;
+          
+          // Call the provided callback if present
+          if (onTimeUp) {
+            onTimeUp();
+          }
+        }
+      }, 1000);
+    }
+  };
+
+  /**
+   * Force game over (for endless mode)
+   */
+  const forceGameOver = (onGameOver) => {
+    clearInterval(countdownInterval);
+    gameActive.value = false;
+    
+    if (onGameOver) {
+      onGameOver();
+    }
+  };
+  
+  /**
+   * Reset the game state
+   */
+  const resetGame = () => {
+    score.value = 0;
+    // Time will be set by startCountdown based on mode
+    gameActive.value = true;
+  };
+  
+  /**
+   * Clean up resources when component unmounts
    */
   const cleanup = () => {
     if (countdownInterval) {
       clearInterval(countdownInterval);
     }
   };
-
+  
   return {
     // State
     score,
@@ -161,6 +188,7 @@ export function useGameState() {
     highScore,
     playerName,
     playerId,
+    isEndlessMode,
     
     // Methods
     loadHighScore,
@@ -168,9 +196,10 @@ export function useGameState() {
     loadPlayerName,
     savePlayerName,
     loadOrGeneratePlayerId,
+    addPoints,
     checkHighScore,
     startCountdown,
-    addPoints,
+    forceGameOver,
     resetGame,
     cleanup
   };

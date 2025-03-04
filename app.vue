@@ -9,22 +9,50 @@
     tabindex="0" 
     ref="gameRef"
   >
-    <!-- Score counter, high score and timer -->
-    <div class="score-display">
-      <span class="score-value">{{ score }}</span>
-      <span class="score-label">POINTS</span>
+    <!-- Mode selection (shown when game is not active) -->
+    <div v-if="!gameActive" class="mode-selector">
+      <h2>Choose Game Mode</h2>
+      <div class="mode-buttons">
+        <button 
+          v-for="mode in availableModes" 
+          :key="mode.id"
+          class="mode-button"
+          :class="{ 'selected': currentMode === mode.id }"
+          @click="selectGameMode(mode.id)"
+        >
+          <div class="mode-name">{{ mode.name }}</div>
+          <div class="mode-description">{{ mode.description }}</div>
+        </button>
+      </div>
+      <button class="start-game-button" @click="startSelectedMode">Start Game</button>
+    </div>
+    
+    <!-- Score display for Standard Mode -->
+    <div v-if="!isEndlessMode && gameActive" class="score-display">
+      <span v-if="currentModeConfig.displayScore" class="score-value">{{ score }}</span>
+      <span v-if="currentModeConfig.displayScore" class="score-label">POINTS</span>
       
-      <div class="highscore-container">
+      <div v-if="currentModeConfig.displayHighScore" class="highscore-container">
         <span class="highscore-value">{{ highScore }}</span>
         <span class="highscore-label">HIGH SCORE</span>
         <span v-if="playerName" class="player-name">{{ playerName }}</span>
       </div>
       
-      <div class="timer-container">
+      <div v-if="currentModeConfig.displayTimer" class="timer-container">
         <span class="timer-value" :class="{ 'timer-low': timeRemaining <= 5 }">{{ timeRemaining }}</span>
         <span class="timer-label">SECONDS</span>
       </div>
     </div>
+    
+    <!-- End Game button for Endless Mode (styled like score display) -->
+    <button 
+      v-if="gameActive && isEndlessMode" 
+      class="score-display end-game-button"
+      @click="endEndlessMode"
+    >
+      <span class="score-value">END</span>
+      <span class="score-label">GAME</span>
+    </button>
     
     <div 
       class="red-dot player" 
@@ -63,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   saveHighScore as saveHighScoreToFirebase, 
@@ -79,6 +107,7 @@ import { useGameEntities } from '~/composables/useGameEntities';
 import { useGameState } from '~/composables/useGameState';
 import { useGameEffects } from '~/composables/useGameEffects';
 import { useGameUI } from '~/composables/useGameUI';
+import { useGameModes } from '~/composables/useGameModes';
 
 // Setup game container ref
 const gameRef = ref(null);
@@ -92,10 +121,10 @@ const {
 
 // Use our game state composable
 const {
-  score, timeRemaining, gameActive, highScore, playerName, playerId,
+  score, timeRemaining, gameActive, highScore, playerName, playerId, isEndlessMode,
   loadHighScore, saveHighScore, loadPlayerName, savePlayerName,
   loadOrGeneratePlayerId, checkHighScore, startCountdown, addPoints,
-  resetGame, cleanup: cleanupGameState
+  resetGame, forceGameOver, cleanup: cleanupGameState
 } = useGameState();
 
 // Use our game entities composable
@@ -115,6 +144,19 @@ const {
 const {
   showNameInputDialog, showGameOverScreen
 } = useGameUI(gameRef, score, highScore, playerName, savePlayerName);
+
+// Use our game modes composable
+const {
+  currentMode,
+  modes,
+  getCurrentModeConfig,
+  setMode,
+  getAvailableModes
+} = useGameModes();
+
+// Computed properties
+const currentModeConfig = computed(() => getCurrentModeConfig());
+const availableModes = computed(() => getAvailableModes());
 
 // Animation frame ID for game loop
 let animationFrameId;
@@ -140,15 +182,19 @@ const updateGame = () => {
         addPoints(pointsEarned);
         
         // Show a temporary score popup at the collection point
-        createScorePopup(newSegment.x + DOT_SIZE/2, newSegment.y, pointsEarned);
+        if (currentModeConfig.value.displayScore) {
+          createScorePopup(newSegment.x + DOT_SIZE/2, newSegment.y, pointsEarned);
+        }
       }
     );
     
     // Update tail segment positions
     updateTailSegments();
     
-    // Check for color matches
-    checkForColorMatches();
+    // Check for color matches only in non-endless mode
+    if (!isEndlessMode.value) {
+      checkForColorMatches();
+    }
     
     // Continue animation if game is active
     animationFrameId = requestAnimationFrame(updateGame);
@@ -183,11 +229,11 @@ const syncHighScore = async () => {
 };
 
 /**
- * Handle game over - called when time runs out
+ * Handle game over - called when time runs out or endless mode is ended
  */
 const handleGameOver = async () => {
   try {
-    // Check if it's a new high score
+    // Check if it's a new high score (only for standard mode)
     const isNewHighScore = await checkHighScore((name, score, id) => 
       saveHighScoreToFirebase(name, score, id)
     );
@@ -212,21 +258,37 @@ const handleGameOver = async () => {
     }
     
     // Re-sync with Firebase in case player name was changed on game over screen
-    if (playerName.value && score.value > 0) {
+    if (playerName.value && score.value > 0 && currentModeConfig.value.saveHighScore) {
       await saveHighScoreToFirebase(playerName.value, score.value, playerId.value);
     }
     
-    // Restart the game
-    restartGame();
+    // Go to mode selection screen instead of immediately restarting
+    gameActive.value = false;
   } catch (error) {
     console.error("Error handling game over:", error);
   }
 };
 
 /**
- * Restart the game
+ * End the endless mode game manually
  */
-const restartGame = () => {
+const endEndlessMode = () => {
+  if (isEndlessMode.value && gameActive.value) {
+    forceGameOver(handleGameOver);
+  }
+};
+
+/**
+ * Select a game mode
+ */
+const selectGameMode = (modeId) => {
+  setMode(modeId);
+};
+
+/**
+ * Start the selected game mode
+ */
+const startSelectedMode = () => {
   // Reset game state
   resetGame();
   
@@ -238,9 +300,8 @@ const restartGame = () => {
   position.value = { x: gameRef.value.clientWidth / 2, y: gameRef.value.clientHeight / 2 };
   velocity.value = { x: 0, y: 0 };
   
-  // Restart the game
-  gameActive.value = true;
-  startCountdown(handleGameOver);
+  // Start the countdown based on the selected mode
+  startCountdown(handleGameOver, currentModeConfig.value);
   
   // Start spawning collectible dots
   startSpawning();
@@ -260,14 +321,8 @@ onMounted(() => {
   // Focus the game container so it can receive keyboard events
   gameRef.value?.focus();
   
-  // Start the game loop
-  animationFrameId = requestAnimationFrame(updateGame);
-  
-  // Start spawning collectible dots
-  startSpawning();
-  
-  // Start the countdown
-  startCountdown(handleGameOver);
+  // Don't automatically start the game - show mode selection instead
+  gameActive.value = false;
   
   // Load high score, player name and ID from localStorage
   loadHighScore();
@@ -387,26 +442,91 @@ html, body {
   }
 }
 
-/* Add a subtle squish effect when segments collide */
-@keyframes squish {
-  0% { transform: scale(1, 1); }
-  50% { transform: scale(1.1, 0.9); }
-  100% { transform: scale(1, 1); }
-}
-
-/* Add a cursor indicator */
-.cursor-indicator {
+/* Mode Selection Styles */
+.mode-selector {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  border: 2px solid white;
-  border-radius: 50%;
+  top: 50%;
+  left: 50%;
   transform: translate(-50%, -50%);
-  pointer-events: none;
-  z-index: 200;
+  background-color: rgba(0, 0, 0, 0.8);
+  border: 3px solid #2196F3;
+  border-radius: 15px;
+  padding: 30px 50px;
+  text-align: center;
+  color: white;
+  font-family: 'Arial', sans-serif;
+  z-index: 1000;
+  box-shadow: 0 0 30px rgba(33, 150, 243, 0.5);
+  min-width: 450px;
+  max-width: 80%;
 }
 
-/* Score counter styles */
+.mode-selector h2 {
+  font-size: 36px;
+  margin: 0 0 30px 0;
+  color: #2196F3;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.mode-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.mode-button {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+  padding: 15px 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.mode-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  transform: scale(1.02);
+}
+
+.mode-button.selected {
+  background-color: rgba(33, 150, 243, 0.3);
+  border-color: #2196F3;
+  box-shadow: 0 0 15px rgba(33, 150, 243, 0.5);
+}
+
+.mode-name {
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: white;
+}
+
+.mode-description {
+  font-size: 14px;
+  color: #BBB;
+}
+
+.start-game-button {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 18px;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: bold;
+}
+
+.start-game-button:hover {
+  background-color: #42A5F5;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(33, 150, 243, 0.7);
+}
+
+/* Score display styles */
 .score-display {
   position: absolute;
   top: 20px;
@@ -421,6 +541,26 @@ html, body {
   border-radius: 10px;
   border: 3px solid rgba(255, 255, 255, 0.3);
   z-index: 200;
+}
+
+/* End Game button styling */
+.end-game-button {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.end-game-button:hover {
+  transform: scale(1.05);
+  background-color: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+}
+
+.end-game-button .score-value {
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
 }
 
 .score-value, .highscore-value, .timer-value {
