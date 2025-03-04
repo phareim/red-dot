@@ -69,7 +69,8 @@ import {
   saveHighScore as saveHighScoreToFirebase, 
   getPlayerHighScore, 
   getTopHighScores, 
-  initializeLeaderboardFromExistingData 
+  initializeLeaderboardFromExistingData,
+  updatePlayerName 
 } from '@/services/firebase';
 
 // Import our composables
@@ -113,7 +114,7 @@ const {
 // Use our game UI composable
 const {
   showNameInputDialog, showGameOverScreen
-} = useGameUI(gameRef, score, highScore, playerName);
+} = useGameUI(gameRef, score, highScore, playerName, savePlayerName);
 
 // Animation frame ID for game loop
 let animationFrameId;
@@ -203,7 +204,17 @@ const handleGameOver = async () => {
     }
     
     // Show game over screen
-    await showGameOverScreen(isNewHighScore, getTopHighScores);
+    const result = await showGameOverScreen(isNewHighScore, getTopHighScores);
+    
+    // If player changed their name, update it in Firebase
+    if (result && result.nameChanged && playerName.value) {
+      await updatePlayerName(playerName.value, playerId.value);
+    }
+    
+    // Re-sync with Firebase in case player name was changed on game over screen
+    if (playerName.value && score.value > 0) {
+      await saveHighScoreToFirebase(playerName.value, score.value, playerId.value);
+    }
     
     // Restart the game
     restartGame();
@@ -711,6 +722,36 @@ html, body {
   border-radius: 12px;
 }
 
+/* Player info section in game over screen */
+.player-info {
+  margin: 10px 0;
+  padding: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+}
+
+.player-name-display {
+  font-weight: bold;
+  color: #4CAF50;
+}
+
+.change-name-button {
+  margin-left: 10px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 15px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.change-name-button:hover {
+  background-color: #0b7dda;
+  transform: scale(1.05);
+}
+
 /* Name input dialog */
 .name-input-dialog {
   position: absolute;
@@ -756,11 +797,10 @@ html, body {
 .button-container {
   display: flex;
   justify-content: center;
+  gap: 10px;
 }
 
-.submit-name {
-  background-color: #4CAF50;
-  color: white;
+.submit-name, .cancel-button {
   border: none;
   padding: 12px 30px;
   font-size: 18px;
@@ -770,10 +810,26 @@ html, body {
   font-weight: bold;
 }
 
+.submit-name {
+  background-color: #4CAF50;
+  color: white;
+}
+
 .submit-name:hover {
   background-color: #66BB6A;
   transform: scale(1.05);
   box-shadow: 0 0 15px rgba(76, 175, 80, 0.7);
+}
+
+.cancel-button {
+  background-color: #9e9e9e;
+  color: white;
+}
+
+.cancel-button:hover {
+  background-color: #bdbdbd;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(158, 158, 158, 0.7);
 }
 
 /* Global high scores styles */

@@ -268,4 +268,52 @@ export async function initializeLeaderboardFromExistingData() {
     console.error("Error initializing leaderboard:", error);
     return false;
   }
+}
+
+// Function to update player name in Firebase
+export async function updatePlayerName(playerName, playerId) {
+  try {
+    const playerDocRef = doc(db, "highscores", playerId);
+    const playerDoc = await getDoc(playerDocRef);
+    
+    if (playerDoc.exists()) {
+      // Update player's name in highscores collection
+      await updateDoc(playerDocRef, {
+        name: playerName,
+        updatedAt: new Date()
+      });
+      
+      // Also update the name in the leaderboard
+      const leaderboardRef = doc(db, "leaderboards", "global");
+      const leaderboardSnapshot = await getDoc(leaderboardRef);
+      
+      if (leaderboardSnapshot.exists()) {
+        // Get current leaderboard
+        const leaderboard = leaderboardSnapshot.data().top_players || [];
+        
+        // Find if player is in leaderboard
+        const playerIndex = leaderboard.findIndex(p => p.id === playerId);
+        
+        if (playerIndex >= 0) {
+          // Update player's name
+          leaderboard[playerIndex].name = playerName;
+          leaderboard[playerIndex].updatedAt = new Date();
+          
+          // Update the leaderboard document
+          await updateDoc(leaderboardRef, {
+            top_players: leaderboard,
+            last_updated: new Date()
+          });
+        }
+      }
+      
+      return true;
+    } else {
+      console.log("Player record not found, cannot update name");
+      return false;
+    }
+  } catch (error) {
+    console.error("Error updating player name:", error);
+    return false;
+  }
 } 
