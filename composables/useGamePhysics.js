@@ -18,18 +18,18 @@ export function useGamePhysics(gameRef) {
   // Mouse control variables
   const cursorPosition = ref({ x: 0, y: 0 });
   const isMouseControlActive = ref(false);
-  const MOUSE_INFLUENCE = 0.03; // How strongly the cursor pulls the dot
+  const MOUSE_INFLUENCE = 0.05; // Increased from 0.03 for stronger mouse pull
   let mouseControlTimeout;
 
   // Constants for movement physics
-  const ACCEL_RATE = 0.5;
-  const DECEL_RATE = 0.85; // Higher value = slower deceleration
-  const MAX_SPEED = 8;
+  const ACCEL_RATE = 0.7;
+  const DECEL_RATE = 0.9;
+  const MAX_SPEED = 12;
   const DOT_SIZE = 60;
 
   // Position history for tail segments
   const positionHistory = ref([]);
-  const MAX_HISTORY = 5000; // Store more positions than we need for smooth following
+  const MAX_HISTORY = 300; // Store more positions than we need for smooth following
 
   /**
    * Handle keyboard key down events
@@ -122,7 +122,7 @@ export function useGamePhysics(gameRef) {
       // Only apply force if the cursor is not too close to the dot
       if (distance > 5) {
         // Reduce acceleration strength for mouse control
-        const MOUSE_ACCEL_RATE = 0.2; // Much gentler than keyboard control
+        const MOUSE_ACCEL_RATE = 0.3; // Increased from 0.2 for faster mouse response
         
         // Apply a gentler force that increases with distance, but caps out
         const force = Math.min(distance / 100, 1.0); // At most 100% strength

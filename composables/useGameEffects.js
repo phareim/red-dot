@@ -108,72 +108,167 @@ export function useGameEffects(gameRef, tailSegments, addPoints) {
   };
 
   /**
-   * Check for color matches in tail segments
-   * Returns true if a match was found and processed
+   * Check for consecutive segments with the same color and trigger chain reactions
    */
   const checkForColorMatches = () => {
-    // Need at least 2 segments to have a match
-    if (tailSegments.value.length < 2) return false;
+    // Need at least 3 segments to have a match
+    if (tailSegments.value.length < 3) return false;
     
-    // Check for two consecutive segments with the same color
-    for (let i = 0; i < tailSegments.value.length - 1; i++) {
-      const firstSegment = tailSegments.value[i];
-      const secondSegment = tailSegments.value[i + 1];
+    // Look for sequences of same-colored dots (minimum 3 in a row)
+    let colorSequences = findColorSequences();
+    
+    // If we found any valid sequences, process them
+    if (colorSequences.length > 0) {
+      // Sort sequences by length (longest first for bigger explosions)
+      colorSequences.sort((a, b) => b.indices.length - a.indices.length);
       
-      // If both colors match, create a color explosion!
-      if (firstSegment.color === secondSegment.color) {
-        const matchedColor = firstSegment.color;
-        
-        // Calculate the bonus points: 3 * snake length + 50
-        const snakeLength = tailSegments.value.length;
-        const bonusPoints = (3 * snakeLength) + 50;
-        
-        // Add the bonus points
-        addPoints(bonusPoints);
-        
-        // Create multiple explosions, one for each removed segment
-        let explosionPositions = [];
-        
-        // Find ALL segments with the matching color
-        const indicesToRemove = [];
-        tailSegments.value.forEach((segment, index) => {
-          if (segment.color === matchedColor) {
-            // Record the explosion positions
-            explosionPositions.push({ x: segment.x, y: segment.y });
-            indicesToRemove.push(index);
-          }
-        });
-        
-        // Create a master explosion at the center of the two matched segments
-        const centerX = (firstSegment.x + secondSegment.x) / 2;
-        const centerY = (firstSegment.y + secondSegment.y) / 2;
-        
-        // Create a larger explosion at the center
-        createExplosionEffect(centerX, centerY, matchedColor, 40);
-        
-        // Create smaller explosions at each removed segment position
-        explosionPositions.forEach(pos => {
-          createExplosionEffect(pos.x, pos.y, matchedColor, 15);
-        });
-        
-        // Create score popup for the big bonus
-        createScorePopup(centerX, centerY, bonusPoints, true);
-        
-        // Create a text message explaining what happened
-        createMessage(`${matchedColor.toUpperCase()} CHAIN REACTION!`, matchedColor);
-        
-        // Remove ALL segments with the matching color (in reverse order to avoid index issues)
-        for (let j = indicesToRemove.length - 1; j >= 0; j--) {
-          tailSegments.value.splice(indicesToRemove[j], 1);
-        }
-        
-        // We found and processed a match
-        return true;
-      }
+      // Process each sequence
+      colorSequences.forEach(sequence => {
+        processColorSequence(sequence);
+      });
+      
+      // After processing sequences, check if new ones have formed
+      setTimeout(() => {
+        checkForColorMatches();
+      }, 200);
+      
+      return true;
     }
     
     // No matches found
     return false;
+  };
+  
+  /**
+   * Find all sequences of 3+ same-colored dots
+   */
+  const findColorSequences = () => {
+    const sequences = [];
+    let currentColor = null;
+    let currentIndices = [];
+    
+    // Scan through all tail segments looking for sequences
+    for (let i = 0; i < tailSegments.value.length; i++) {
+      const segment = tailSegments.value[i];
+      
+      if (currentColor === segment.color) {
+        // Continue the current sequence
+        currentIndices.push(i);
+      } else {
+        // If we have a sequence of 3 or more, save it
+        if (currentIndices.length >= 3) {
+          sequences.push({
+            color: currentColor,
+            indices: [...currentIndices]
+          });
+        }
+        
+        // Start a new sequence
+        currentColor = segment.color;
+        currentIndices = [i];
+      }
+    }
+    
+    // Check if the last sequence is valid
+    if (currentIndices.length >= 3) {
+      sequences.push({
+        color: currentColor,
+        indices: [...currentIndices]
+      });
+    }
+    
+    return sequences;
+  };
+  
+  /**
+   * Process a color sequence chain reaction
+   */
+  const processColorSequence = (sequence) => {
+    const { color, indices } = sequence;
+    
+    // Find all segments of the same color (including ones not in the sequence)
+    const allMatchingIndices = [];
+    tailSegments.value.forEach((segment, index) => {
+      if (segment.color === color) {
+        allMatchingIndices.push(index);
+      }
+    });
+    
+    // Calculate the multiplier based on sequence length
+    const multiplier = Math.min(indices.length, 6); // Cap at 6x for balance
+    
+    // Gather explosion positions and calculate points
+    let explosionPositions = [];
+    let totalBonusPoints = 0;
+    
+    // Calculate center position of the sequence for the main explosion
+    let centerX = 0;
+    let centerY = 0;
+    
+    indices.forEach(index => {
+      const segment = tailSegments.value[index];
+      centerX += segment.x;
+      centerY += segment.y;
+    });
+    
+    centerX /= indices.length;
+    centerY /= indices.length;
+    
+    // Sort all matching indices in reverse order so we process from tail end first
+    allMatchingIndices.sort((a, b) => b - a);
+    
+    // For each matching segment, calculate points and create explosion
+    let currentTailLength = tailSegments.value.length;
+    allMatchingIndices.forEach(index => {
+      const segment = tailSegments.value[index];
+      
+      // Each dot pays points based on current tail length times the multiplier
+      const pointsForThisDot = currentTailLength * multiplier;
+      totalBonusPoints += pointsForThisDot;
+      
+      // Record explosion position
+      explosionPositions.push({ 
+        x: segment.x, 
+        y: segment.y,
+        points: pointsForThisDot 
+      });
+      
+      // Decrease the current tail length for next calculation
+      currentTailLength--;
+    });
+    
+    // Create the main explosion at the center of the sequence
+    createExplosionEffect(centerX, centerY, color, multiplier * 10);
+    
+    // Create individual explosions and score popups for each segment
+    explosionPositions.forEach(pos => {
+      createExplosionEffect(pos.x, pos.y, color, 15);
+      createScorePopup(pos.x, pos.y, pos.points, false);
+    });
+    
+    // Create a big score popup for the total
+    createScorePopup(centerX, centerY, totalBonusPoints, true);
+    
+    // Create a text message explaining what happened
+    let message = "";
+    if (multiplier >= 6) {
+      message = `MEGA ${color.toUpperCase()} CHAIN REACTION! (${multiplier}×)`;
+    } else if (multiplier >= 5) {
+      message = `SUPER ${color.toUpperCase()} CHAIN REACTION! (${multiplier}×)`;
+    } else if (multiplier >= 4) {
+      message = `AWESOME ${color.toUpperCase()} CHAIN REACTION! (${multiplier}×)`;
+    } else {
+      message = `${color.toUpperCase()} CHAIN REACTION! (${multiplier}×)`;
+    }
+    createMessage(message, color);
+    
+    // Add the total bonus points
+    addPoints(totalBonusPoints);
+    
+    // Remove ALL segments with the matching color (in reverse order)
+    for (let i = allMatchingIndices.length - 1; i >= 0; i--) {
+      tailSegments.value.splice(allMatchingIndices[i], 1);
+    }
   };
 
   return {
