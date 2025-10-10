@@ -6,7 +6,7 @@ import { ref, computed } from 'vue';
 export function useGameState() {
   // Game state variables
   const score = ref(0);
-  const timeRemaining = ref(20);
+  const timeRemaining = ref(30);
   const gameActive = ref(true);
   let countdownInterval = null;
   
