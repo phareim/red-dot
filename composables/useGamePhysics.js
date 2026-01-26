@@ -21,6 +21,10 @@ export function useGamePhysics(gameRef) {
   const MOUSE_INFLUENCE = 0.05; // Increased from 0.03 for stronger mouse pull
   let mouseControlTimeout;
 
+  // Touch control variables
+  const touchPosition = ref({ x: 0, y: 0 });
+  const isTouchControlActive = ref(false);
+
   // Constants for movement physics
   const ACCEL_RATE = 0.7;
   const DECEL_RATE = 0.9;
@@ -79,6 +83,47 @@ export function useGamePhysics(gameRef) {
   };
 
   /**
+   * Handle touch start event for precise touch control
+   */
+  const handleTouchStart = (event) => {
+    if (!gameRef.value) return;
+    event.preventDefault();
+
+    const touch = event.touches[0];
+    const rect = gameRef.value.getBoundingClientRect();
+    touchPosition.value = {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top
+    };
+
+    isTouchControlActive.value = true;
+    isMouseControlActive.value = false;
+  };
+
+  /**
+   * Handle touch move event - updates touch position for precise following
+   */
+  const handleTouchMove = (event) => {
+    if (!gameRef.value || !isTouchControlActive.value) return;
+    event.preventDefault();
+
+    const touch = event.touches[0];
+    const rect = gameRef.value.getBoundingClientRect();
+    touchPosition.value = {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top
+    };
+  };
+
+  /**
+   * Handle touch end event
+   */
+  const handleTouchEnd = (event) => {
+    event.preventDefault();
+    isTouchControlActive.value = false;
+  };
+
+  /**
    * Calculate physics for player movement based on keyboard/mouse input
    * Returns updated position and velocity
    */
@@ -112,46 +157,77 @@ export function useGamePhysics(gameRef) {
       isMouseControlActive.value = false;
     }
     
+    // Handle touch input with precise following (highest priority after keyboard)
+    if (isTouchControlActive.value) {
+      // Calculate target position (center the dot on finger)
+      const targetX = touchPosition.value.x - DOT_SIZE / 2;
+      const targetY = touchPosition.value.y - DOT_SIZE / 2;
+
+      // Calculate distance to target
+      const dx = targetX - position.value.x;
+      const dy = targetY - position.value.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // Use direct interpolation for precise, responsive following
+      // Higher values = more responsive (0.3 = smooth but responsive)
+      const TOUCH_FOLLOW_SPEED = 0.35;
+
+      if (distance > 1) {
+        // Move directly toward touch position
+        velocity.value.x = dx * TOUCH_FOLLOW_SPEED;
+        velocity.value.y = dy * TOUCH_FOLLOW_SPEED;
+      } else {
+        // Stop when very close to prevent jitter
+        velocity.value.x = 0;
+        velocity.value.y = 0;
+      }
+    }
     // Handle mouse input if active and no keyboard keys are pressed
-    if (isMouseControlActive.value) {
+    else if (isMouseControlActive.value) {
       // Calculate vector from dot to cursor
       const dx = cursorPosition.value.x - position.value.x - DOT_SIZE/2;
       const dy = cursorPosition.value.y - position.value.y - DOT_SIZE/2;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      
+
       // Only apply force if the cursor is not too close to the dot
       if (distance > 5) {
         // Reduce acceleration strength for mouse control
         const MOUSE_ACCEL_RATE = 0.3; // Increased from 0.2 for faster mouse response
-        
+
         // Apply a gentler force that increases with distance, but caps out
         const force = Math.min(distance / 100, 1.0); // At most 100% strength
-        
+
         // Normalize and apply force toward cursor, but more gently
         acceleration.value.x += (dx / distance) * MOUSE_ACCEL_RATE * force;
         acceleration.value.y += (dy / distance) * MOUSE_ACCEL_RATE * force;
       }
     }
     
-    // Apply acceleration to velocity
-    velocity.value.x += acceleration.value.x;
-    velocity.value.y += acceleration.value.y;
-    
-    // Apply friction with stronger damping for mouse control
-    if (!keys.value.ArrowLeft && !keys.value.ArrowRight) {
-      // More damping when using mouse control for smoother stops
-      const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
-      velocity.value.x *= frictionFactor;
+    // Apply acceleration to velocity (skip for touch - velocity is set directly)
+    if (!isTouchControlActive.value) {
+      velocity.value.x += acceleration.value.x;
+      velocity.value.y += acceleration.value.y;
     }
-    if (!keys.value.ArrowUp && !keys.value.ArrowDown) {
-      const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
-      velocity.value.y *= frictionFactor;
+
+    // Apply friction with stronger damping for mouse control (skip for touch)
+    if (!isTouchControlActive.value) {
+      if (!keys.value.ArrowLeft && !keys.value.ArrowRight) {
+        // More damping when using mouse control for smoother stops
+        const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
+        velocity.value.x *= frictionFactor;
+      }
+      if (!keys.value.ArrowUp && !keys.value.ArrowDown) {
+        const frictionFactor = isMouseControlActive.value ? 0.94 : DECEL_RATE;
+        velocity.value.y *= frictionFactor;
+      }
     }
-    
-    // Limit maximum speed (slower for mouse control)
-    const currentMaxSpeed = isMouseControlActive.value ? MAX_SPEED * 0.7 : MAX_SPEED;
-    velocity.value.x = Math.max(Math.min(velocity.value.x, currentMaxSpeed), -currentMaxSpeed);
-    velocity.value.y = Math.max(Math.min(velocity.value.y, currentMaxSpeed), -currentMaxSpeed);
+
+    // Limit maximum speed (skip for touch to allow precise following)
+    if (!isTouchControlActive.value) {
+      const currentMaxSpeed = isMouseControlActive.value ? MAX_SPEED * 0.7 : MAX_SPEED;
+      velocity.value.x = Math.max(Math.min(velocity.value.x, currentMaxSpeed), -currentMaxSpeed);
+      velocity.value.y = Math.max(Math.min(velocity.value.y, currentMaxSpeed), -currentMaxSpeed);
+    }
     
     // Apply velocity to position
     position.value.x += velocity.value.x;
@@ -215,14 +291,18 @@ export function useGamePhysics(gameRef) {
     acceleration,
     cursorPosition,
     isMouseControlActive,
+    isTouchControlActive,
     positionHistory,
     keys,
     DOT_SIZE,
-    
+
     // Methods
     handleKeyDown,
     handleKeyUp,
     handleMouseMove,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
     calculateMovement,
     initializePosition,
     cleanup
