@@ -1,12 +1,16 @@
 <template>
-  <div 
-    class="game-container" 
+  <div
+    class="game-container"
     :class="{ 'game-active': gameActive }"
-    @keydown="handleGameKeyDown" 
-    @keyup="handleKeyUp" 
+    @keydown="handleGameKeyDown"
+    @keyup="handleKeyUp"
     @mousemove="handleMouseMove"
     @mousedown="isMouseControlActive = true"
-    tabindex="0" 
+    @touchstart="handleTouchStart"
+    @touchmove="handleTouchMove"
+    @touchend="handleTouchEnd"
+    @touchcancel="handleTouchEnd"
+    tabindex="0"
     ref="gameRef"
   >
     <!-- Mode selection (shown when game is not active) -->
@@ -124,10 +128,11 @@ const fetchTopScores = async (limit) => {
 };
 
 // Use our game physics composable
-const { 
-  position, velocity, positionHistory, keys, isMouseControlActive,
+const {
+  position, velocity, positionHistory, keys, isMouseControlActive, isTouchControlActive,
   DOT_SIZE, handleKeyDown, handleKeyUp, handleMouseMove,
-  calculateMovement, initializePosition, cleanup: cleanupPhysics 
+  handleTouchStart, handleTouchMove, handleTouchEnd,
+  calculateMovement, initializePosition, cleanup: cleanupPhysics
 } = useGamePhysics(gameRef);
 
 // Use our game state composable
